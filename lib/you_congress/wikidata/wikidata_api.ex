@@ -17,7 +17,7 @@ defmodule YouCongress.Wikidata.WikidataApi do
   # Wikimedia's User-Agent policy requires a descriptive UA with contact info;
   # requests without one get throttled/blocked.
   # https://meta.wikimedia.org/wiki/User-Agent_policy
-  @user_agent "YouCongress/1.0 (https://apx-lake.vercel.app; contact@apx-lake.vercel.app)"
+  @user_agent "APX/1.0 (https://apx-lake.vercel.app; contact@apx-lake.vercel.app)"
 
   @doc """
   Returns the Wikidata id for a given Wikipedia URL.

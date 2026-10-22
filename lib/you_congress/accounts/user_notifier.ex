@@ -17,7 +17,7 @@ defmodule YouCongress.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"YouCongress", "hello@apx-lake.vercel.app"})
+      |> from({"APX", "hello@apx-lake.vercel.app"})
       |> subject(subject)
       |> text_body(text_body_content)
       |> html_body(html_body_content)
@@ -40,11 +40,11 @@ defmodule YouCongress.Accounts.UserNotifier do
   def deliver_newsletter_confirmation(email, confirmation_url) do
     deliver(
       email,
-      "Confirm your YouCongress newsletter subscription",
+      "Confirm your APX newsletter subscription",
       "Confirm your subscription by opening this link:\n\n#{confirmation_url}\n\nIf you did not request this, you can ignore this email.",
       build_html_email(
         "Confirm your subscription",
-        ["Please confirm that you want to receive YouCongress news and product updates."],
+        ["Please confirm that you want to receive APX news and product updates."],
         "Confirm subscription",
         confirmation_url
       )
@@ -52,11 +52,11 @@ defmodule YouCongress.Accounts.UserNotifier do
   end
 
   @doc """
-  Notifies the YouCongress team when a new account is created.
+  Notifies the APX team when a new account is created.
   """
   def deliver_new_user_signup_notification(name, profile_url) do
     text_body = """
-    A new user signed up for YouCongress.
+    A new user signed up for APX.
 
     Name: #{name}
     Profile: #{profile_url}
@@ -65,20 +65,20 @@ defmodule YouCongress.Accounts.UserNotifier do
     html_body =
       build_html_email(
         "New user signup",
-        ["A new user signed up for YouCongress.", "Name: #{name}"],
+        ["A new user signed up for APX.", "Name: #{name}"],
         "View profile",
         profile_url
       )
 
-    deliver("hector@apx-lake.vercel.app", "New YouCongress signup", text_body, html_body)
+    deliver("hector@apx-lake.vercel.app", "New APX signup", text_body, html_body)
   end
 
   @doc """
-  Notifies the YouCongress team when a Reconsider page is created.
+  Notifies the APX team when a Reconsider page is created.
   """
   def deliver_reconsideration_created_notification(creator_name, reconsideration_url) do
     text_body = """
-    A new Reconsider page was created on YouCongress.
+    A new Reconsider page was created on APX.
 
     Creator: #{creator_name}
     Page: #{reconsideration_url}
@@ -87,12 +87,12 @@ defmodule YouCongress.Accounts.UserNotifier do
     html_body =
       build_html_email(
         "New Reconsider page",
-        ["A new Reconsider page was created on YouCongress.", "Creator: #{creator_name}"],
+        ["A new Reconsider page was created on APX.", "Creator: #{creator_name}"],
         "View Reconsider page",
         reconsideration_url
       )
 
-    deliver("hector@apx-lake.vercel.app", "New YouCongress Reconsider page", text_body, html_body)
+    deliver("hector@apx-lake.vercel.app", "New APX Reconsider page", text_body, html_body)
   end
 
   defp build_html_email(title, paragraphs, button_label, button_url) do
@@ -135,14 +135,14 @@ defmodule YouCongress.Accounts.UserNotifier do
     <html>
       <body style=\"margin: 0; padding: 24px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\">
         <div style=\"max-width: 520px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; box-shadow: 0 15px 45px rgba(15, 23, 42, 0.08);\">
-          <p style=\"margin: 0 0 24px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8;\">YouCongress</p>
+          <p style=\"margin: 0 0 24px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8;\">APX</p>
           <h1 style=\"margin: 0 0 24px; font-size: 22px; color: #0f172a;\">#{safe_title}</h1>
           #{paragraph_markup}
           #{button_markup}
-          <p style=\"margin: 32px 0 0; font-size: 13px; color: #64748b;\">— The YouCongress Team</p>
+          <p style=\"margin: 32px 0 0; font-size: 13px; color: #64748b;\">— The APX Team</p>
         </div>
         <p style=\"max-width: 520px; margin: 18px auto 0; text-align: center; font-size: 12px; color: #94a3b8;\">
-          © #{Date.utc_today().year} YouCongress. All rights reserved.
+          © #{Date.utc_today().year} APX. All rights reserved.
         </p>
       </body>
     </html>
@@ -173,7 +173,7 @@ defmodule YouCongress.Accounts.UserNotifier do
 
     #{num_quotes} #{pluralized_quote} #{if num_quotes == 1, do: "was", else: "were"} added to the statement.
 
-    Visit YouCongress to read them: #{statement_url}
+    Visit APX to read them: #{statement_url}
     """
 
     html_body =
@@ -197,7 +197,7 @@ defmodule YouCongress.Accounts.UserNotifier do
     text_body = """
     Hi #{user.email},
 
-    Your six-digit YouCongress confirmation code is: #{code}
+    Your six-digit APX confirmation code is: #{code}
 
     Enter this code on the sign-up page within 24 hours to verify your email. If you didn't create an account with us, you can safely ignore this email.
     """
@@ -206,7 +206,7 @@ defmodule YouCongress.Accounts.UserNotifier do
       build_html_email(
         "Confirm your email",
         [
-          "Thanks for signing up for YouCongress.",
+          "Thanks for signing up for APX.",
           "Enter the six-digit code below on the sign-up screen within 24 hours to confirm your email address.",
           {:code, code}
         ],
@@ -224,7 +224,7 @@ defmodule YouCongress.Accounts.UserNotifier do
     text_body = """
     Hi #{user.email},
 
-    Sign in to YouCongress by visiting the link below:
+    Sign in to APX by visiting the link below:
 
     #{url}
 
@@ -233,16 +233,16 @@ defmodule YouCongress.Accounts.UserNotifier do
 
     html_body =
       build_html_email(
-        "Sign in to YouCongress",
+        "Sign in to APX",
         [
           "We received a request to sign in to #{user.email}.",
           "Use the button below within 15 minutes. The link can only be used once."
         ],
-        "Sign in to YouCongress",
+        "Sign in to APX",
         url
       )
 
-    deliver(user.email, "Your YouCongress sign-in link", text_body, html_body)
+    deliver(user.email, "Your APX sign-in link", text_body, html_body)
   end
 
   @doc """
@@ -269,11 +269,11 @@ defmodule YouCongress.Accounts.UserNotifier do
         url
       )
 
-    deliver(user.email, "Confirm your YouCongress email", text_body, html_body)
+    deliver(user.email, "Confirm your APX email", text_body, html_body)
   end
 
   defp registration_text_intro(nil) do
-    "Confirm your email and sign in to YouCongress by visiting the link below:"
+    "Confirm your email and sign in to APX by visiting the link below:"
   end
 
   defp registration_text_intro(results_url) do
@@ -282,14 +282,14 @@ defmodule YouCongress.Accounts.UserNotifier do
 
   defp registration_paragraphs(user, nil) do
     [
-      "Thanks for signing up for YouCongress.",
+      "Thanks for signing up for APX.",
       "Use the button below within 15 minutes to confirm #{user.email} and sign in. The link can only be used once."
     ]
   end
 
   defp registration_paragraphs(user, results_url) do
     [
-      "Thanks for sharing your response on YouCongress.",
+      "Thanks for sharing your response on APX.",
       "Confirm #{user.email} to record your response and see results from #{results_url}.",
       "Use the button below within 15 minutes. The link can only be used once."
     ]
@@ -320,7 +320,7 @@ defmodule YouCongress.Accounts.UserNotifier do
         url
       )
 
-    deliver(user.email, "Set your YouCongress password", text_body, html_body)
+    deliver(user.email, "Set your APX password", text_body, html_body)
   end
 
   @doc """
@@ -341,7 +341,7 @@ defmodule YouCongress.Accounts.UserNotifier do
       build_html_email(
         "Update your email",
         [
-          "You recently told us you'd like to use a different email address for YouCongress.",
+          "You recently told us you'd like to use a different email address for APX.",
           "Hit the button below to confirm that change."
         ],
         "Update email",

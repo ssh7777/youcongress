@@ -1,6 +1,6 @@
 # Quote Authenticity Verification
 
-Use this guidance when deciding whether an existing YouCongress quote is authentic and correctly stored.
+Use this guidance when deciding whether an existing APX quote is authentic and correctly stored.
 
 ## Inputs
 

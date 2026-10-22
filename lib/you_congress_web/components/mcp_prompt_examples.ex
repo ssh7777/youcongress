@@ -23,7 +23,7 @@ defmodule YouCongressWeb.Components.McpPromptExamples do
       <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div class="flex items-start justify-between gap-4">
           <p id="claude-prompt-1" class="flex-1 text-base text-gray-800 italic">
-            You are a policy analyst researching AI's impact on jobs. Use YouCongress to search quotes from 2025 onwards, cluster them by argument, create a disagreement map and identify tension points. Return verbatim attributed quotes with links to sources.
+            You are a policy analyst researching AI's impact on jobs. Use APX to search quotes from 2025 onwards, cluster them by argument, create a disagreement map and identify tension points. Return verbatim attributed quotes with links to sources.
           </p>
           <button
             type="button"
@@ -52,7 +52,7 @@ defmodule YouCongressWeb.Components.McpPromptExamples do
       <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div class="flex items-start justify-between gap-4">
           <p id="claude-prompt-2" class="flex-1 text-base text-gray-800 italic">
-            You're a journalist writing about the pros and cons of advanced open source AI. Use YouCongress, identify arguments, explain each of them and include alternative policies. Return verbatim quotes with links to the sources.
+            You're a journalist writing about the pros and cons of advanced open source AI. Use APX, identify arguments, explain each of them and include alternative policies. Return verbatim quotes with links to the sources.
           </p>
           <button
             type="button"

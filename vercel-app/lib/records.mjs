@@ -34,6 +34,15 @@ export function repository(query) {
       const {rows} = await query('SELECT id::text, slug, title, description FROM policy_statements WHERE slug = $1 LIMIT 1', [slug]);
       return rows[0] || null;
     },
+    async statementTallies(id) {
+      const {rows} = await query(`
+        SELECT v.position, count(*)::int AS n
+        FROM votes v WHERE v.statement_id = $1
+        GROUP BY v.position`, [id]);
+      const tallies = {for: 0, abstain: 0, against: 0};
+      for (const row of rows) tallies[row.position] = row.n;
+      return tallies;
+    },
     async quotes(id, page = 1) {
       const {rows} = await query(`
         SELECT q.id::text, q.content, q.source_url, q.source_text,

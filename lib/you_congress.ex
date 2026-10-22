@@ -1,6 +1,6 @@
-defmodule YouCongress do
+defmodule APX do
   @moduledoc """
-  YouCongress keeps the contexts that define your domain
+  APX keeps the contexts that define your domain
   and business logic.
 
   Contexts are also responsible for managing your data, regardless

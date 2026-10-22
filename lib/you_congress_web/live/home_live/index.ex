@@ -22,7 +22,7 @@ defmodule YouCongressWeb.HomeLive.Index do
       socket
       |> assign(
         :page_title,
-        "Expert and Citizen Preferences | YouCongress"
+        "Expert and Citizen Preferences | APX"
       )
       |> assign(
         :page_description,

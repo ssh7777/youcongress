@@ -1,6 +1,6 @@
 defmodule YouCongressWeb.MCPServer.QuotesSearch do
   @moduledoc """
-  Search quotes on YouCongress.
+  Search quotes on APX.
 
   With a statement_id, performs a keyword search for quotes within that statement
   (policy proposal or claim); this is public. Without a statement_id, performs a

@@ -16,7 +16,7 @@ defmodule YouCongressWeb.ReconsiderLive.New do
     if is_nil(socket.assigns.current_user.author.username) do
       {:ok,
        socket
-       |> put_flash(:error, "Choose a YouCongress username before creating a Reconsider page.")
+       |> put_flash(:error, "Choose a APX username before creating a Reconsider page.")
        |> redirect(to: ~p"/settings?#{%{return_to: "/reconsider/new"}}")}
     else
       mount_form(socket)
@@ -310,7 +310,7 @@ defmodule YouCongressWeb.ReconsiderLive.New do
   defp selected_delegate_ids(socket), do: Enum.map(socket.assigns.selected_delegates, & &1.id)
 
   defp author_name(author),
-    do: author.name || author.username || author.twitter_username || "YouCongress author"
+    do: author.name || author.username || author.twitter_username || "APX author"
 
   defp author_username(%{username: username}) when is_binary(username), do: "@#{username}"
 
@@ -366,7 +366,7 @@ defmodule YouCongressWeb.ReconsiderLive.New do
         />
         <div id="statement-picker" class="space-y-3">
           <label for="statement-search" class="block text-sm font-semibold leading-6 text-zinc-800">
-            YouCongress statements (1–3)
+            APX statements (1–3)
           </label>
 
           <div :if={@selected_statements != []} id="selected-statements" class="space-y-2">

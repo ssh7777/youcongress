@@ -1,0 +1,4 @@
+interface:
+  display_name: "APX Verify Quotes"
+  short_description: "Verify quotes and remove contradicted links"
+  default_prompt: "Use $apx-verify-quotes to verify recent unverified APX quotes, preserve ai_unverifiable quote links, remove contradicted associations, and verify vote answers."

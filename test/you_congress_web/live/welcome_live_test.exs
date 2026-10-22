@@ -23,7 +23,7 @@ defmodule YouCongressWeb.WelcomeLiveTest do
     test "Logged users can load the page", %{conn: conn, current_user: current_user} do
       conn = log_in_user(conn, current_user)
       {:ok, _welcome_live, html} = live(conn, ~p"/welcome")
-      assert html =~ "Welcome to YouCongress"
+      assert html =~ "Welcome to APX"
     end
 
     test "Accepting the newsletter, saves it and redirects to home", %{

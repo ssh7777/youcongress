@@ -19,7 +19,7 @@ defmodule YouCongressWeb.NewsletterConfirmationLive do
     <div class="mx-auto max-w-sm text-center">
       <.header>
         Confirm newsletter subscription
-        <:subtitle>Please confirm that you want to receive YouCongress updates.</:subtitle>
+        <:subtitle>Please confirm that you want to receive APX updates.</:subtitle>
       </.header>
 
       <div :if={@confirmed?} class="mt-6 rounded-md bg-green-50 p-4 text-green-900">

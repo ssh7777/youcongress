@@ -28,7 +28,7 @@ defmodule YouCongress.Seeds do
 
     author_attrs = %{
       "name" => "Admin",
-      "bio" => "YouCongress admin"
+      "bio" => "APX admin"
     }
 
     if user = Accounts.get_user_by_email(user_attrs["email"]) do

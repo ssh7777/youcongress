@@ -20,7 +20,7 @@ defmodule YouCongressWeb.AccountCompletionControllerTest do
     assert phone_html =~ "Verify your phone"
     assert phone_html =~ "Optional · Phone verification helps reduce spam and abuse."
     assert phone_html =~ "1/2"
-    refute phone_html =~ "Get YouCongress updates"
+    refute phone_html =~ "Get APX updates"
 
     conn = post(conn, ~p"/account-completion/dismiss-phone?return_to=/about")
     assert redirected_to(conn) == ~p"/about"
@@ -31,7 +31,7 @@ defmodule YouCongressWeb.AccountCompletionControllerTest do
 
     conn = recycle(conn)
     newsletter_html = conn |> get(~p"/about") |> html_response(200)
-    assert newsletter_html =~ "Get YouCongress updates"
+    assert newsletter_html =~ "Get APX updates"
     assert newsletter_html =~ "Optional · Subscribe to news and product updates."
     assert newsletter_html =~ "2/2"
     assert newsletter_html =~ "Subscribe"

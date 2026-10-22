@@ -17,7 +17,7 @@ defmodule YouCongress.AuthorsSearchTest do
       assert result.id == author.id
     end
 
-    test "search/1 finds authors by YouCongress username and bio" do
+    test "search/1 finds authors by APX username and bio" do
       author =
         author_fixture(
           name: "Ada Energy",

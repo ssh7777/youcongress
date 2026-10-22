@@ -18,7 +18,7 @@ defmodule YouCongress.Workers.NewUserSignupNotificationWorkerTest do
 
     assert_email_sent(fn email ->
       assert email.to == [{"", "hector@apx-lake.vercel.app"}]
-      assert email.subject == "New YouCongress signup"
+      assert email.subject == "New APX signup"
       assert email.text_body =~ "Name: Ada Lovelace"
       assert email.text_body =~ "Profile: https://apx-lake.vercel.app/a/42"
       assert email.html_body =~ "Name: Ada Lovelace"

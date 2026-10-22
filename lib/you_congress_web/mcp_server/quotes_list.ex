@@ -1,6 +1,6 @@
 defmodule YouCongressWeb.MCPServer.QuotesList do
   @moduledoc """
-  List quotes on YouCongress.
+  List quotes on APX.
   Returns up to 100 quotes ordered by id by default, or by the date of the quote
   when `order_by` is "date". `order` controls the direction ("desc" by default,
   or "asc"). Quotes without a date are returned last when ordering by date.

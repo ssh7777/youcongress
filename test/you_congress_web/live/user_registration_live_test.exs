@@ -42,7 +42,7 @@ defmodule YouCongressWeb.UserRegistrationLiveTest do
 
       assert_email_sent(fn email_message ->
         assert email_message.to == [{"", "hector@apx-lake.vercel.app"}]
-        assert email_message.subject == "New YouCongress signup"
+        assert email_message.subject == "New APX signup"
         assert email_message.text_body =~ "Name: New User"
 
         assert email_message.text_body =~
@@ -53,7 +53,7 @@ defmodule YouCongressWeb.UserRegistrationLiveTest do
       end)
 
       assert_email_sent(fn email_message ->
-        assert email_message.subject == "Confirm your YouCongress email"
+        assert email_message.subject == "Confirm your APX email"
         assert email_message.text_body =~ "Confirm your email"
         assert email_message.html_body =~ ">Confirm your email</a>"
       end)
@@ -70,7 +70,7 @@ defmodule YouCongressWeb.UserRegistrationLiveTest do
       |> render_submit()
 
       assert_email_sent(fn email_message ->
-        assert email_message.subject == "New YouCongress signup"
+        assert email_message.subject == "New APX signup"
         assert email_message.text_body =~ "Name: Reconsider participant"
         refute email_message.text_body =~ email
         true
@@ -109,7 +109,7 @@ defmodule YouCongressWeb.UserRegistrationLiveTest do
 
       assert_email_sent(fn email_message ->
         assert email_message.to == [{"", existing_user.email}]
-        assert email_message.subject == "Confirm your YouCongress email"
+        assert email_message.subject == "Confirm your APX email"
       end)
     end
 

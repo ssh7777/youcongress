@@ -41,7 +41,7 @@ defmodule YouCongressWeb.ReconsiderLiveTest do
 
     assert html =~ "Rethinking city streets"
     assert html =~ "Before this article"
-    assert has_element?(view, "#reconsider-creator-attribution", "Created on YouCongress by")
+    assert has_element?(view, "#reconsider-creator-attribution", "Created on APX by")
     refute has_element?(view, "#reconsider-share-banner")
     refute html =~ "Sign in to record your response"
 
@@ -387,7 +387,7 @@ defmodule YouCongressWeb.ReconsiderLiveTest do
 
     {:ok, show_view, show_html} = live(conn, path)
     refute has_element?(show_view, "#reconsider-creator-attribution")
-    refute show_html =~ "Created on YouCongress by"
+    refute show_html =~ "Created on APX by"
   end
 
   test "creator form keeps its references when validation fails", %{conn: conn} = context do
@@ -484,7 +484,7 @@ defmodule YouCongressWeb.ReconsiderLiveTest do
     conn = log_in_user(conn, context.creator)
     {:ok, view, html} = live(conn, ~p"/reconsider/new")
 
-    assert html =~ "YouCongress statements (1–3)"
+    assert html =~ "APX statements (1–3)"
 
     select_statement(view, context.statement, "private cars")
     select_statement(view, second_statement, "nuclear power")

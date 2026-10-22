@@ -5,7 +5,7 @@ defmodule YouCongress.MCP.ToolUsageTracker do
 
   alias Anubis.Server.Frame
 
-  alias YouCongress.{Accounts, Amplitude, Track}
+  alias APX.{Accounts, Amplitude, Track}
   alias YouCongress.Accounts.User
   alias YouCongressWeb.MCPServer
 

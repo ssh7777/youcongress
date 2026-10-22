@@ -1,0 +1,4 @@
+interface:
+  display_name: "APX Topic Quotes"
+  short_description: "Find new internet quotes and add them to existing APX statements"
+  default_prompt: "Use $apx-topic-quotes to find sourced quotes on the internet that are not already present on APX, then add and link them to existing APX statements via MCP tools. Use only authors who have no opinion already on the target statement. Do not repeat authors."

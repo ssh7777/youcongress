@@ -1,6 +1,6 @@
 defmodule YouCongressWeb.MCPServer.AuthorsSearch do
   @moduledoc """
-  Search authors in YouCongress.
+  Search authors in APX.
   """
 
   use Anubis.Server.Component, type: :tool

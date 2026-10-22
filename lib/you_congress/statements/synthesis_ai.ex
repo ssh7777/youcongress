@@ -24,7 +24,7 @@ defmodule YouCongress.Statements.SynthesisAI do
   @max_bio_chars 120
 
   @system_message "You are a neutral policy analyst synthesizing sourced quotes about a debate " <>
-                    "statement for YouCongress. Ground every claim exclusively in the quotes " <>
+                    "statement for APX. Ground every claim exclusively in the quotes " <>
                     "provided. Never introduce outside facts, events, statistics, or names. " <>
                     "Never invent, alter, or paraphrase quote text as if quoting. Opinion IDs " <>
                     "are internal metadata: use them only in the opinion_ids arrays for clusters. " <>
