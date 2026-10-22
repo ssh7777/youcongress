@@ -226,9 +226,9 @@ defmodule YouCongressWeb.OpinionLive.OpinionComponent do
   defp x_url(opinion, statement, author, current_user) do
     url =
       if statement do
-        " https://youcongress.org#{x_path(statement)}"
+        " #{YouCongressWeb.Endpoint.url()}#{x_path(statement)}"
       else
-        " https://youcongress.org/c/#{opinion.id}"
+        " #{YouCongressWeb.Endpoint.url()}/c/#{opinion.id}"
       end
 
     opinion

@@ -79,6 +79,10 @@ mix phx.server
 
 Open [http://localhost:4000](http://localhost:4000) in your browser.
 
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for production configuration, automatic public URL selection, and the limitations of deploying Phoenix LiveView on Vercel.
+
 ## How to contribute
 
 - Email hector@youcongress.org if you would like to help validate quotes found by AI agents.

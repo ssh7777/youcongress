@@ -69,7 +69,7 @@ defmodule YouCongressWeb.MCPServer.StatementsCreate do
       statement_id: statement.id,
       title: statement.title,
       slug: statement.slug,
-      url: "https://youcongress.org/p/#{statement.slug}"
+      url: YouCongressWeb.Endpoint.url() <> "/p/#{statement.slug}"
     }
 
     Response.json(Response.tool(), data)

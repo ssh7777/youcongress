@@ -73,6 +73,11 @@ config :you_congress, :openai,
 config :you_congress, :amplitude_api_key, System.get_env("AMPLITUDE_KEY")
 config :you_congress, :base_url, System.get_env("BASE_URL")
 
+config :you_congress, :redirect_hosts,
+  System.get_env("REDIRECT_HOSTS", "")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
@@ -119,36 +124,60 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  # Prefer an explicit public URL; platform metadata is a fallback, never a
+  # request Host header (which is untrusted). Preview URLs precede production URLs.
+  public_url =
+    Enum.find_value(
+      ["BASE_URL", "PHX_HOST", "VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL",
+       "RENDER_EXTERNAL_URL", "RAILWAY_PUBLIC_DOMAIN", "FLY_APP_NAME"],
+      fn name ->
+        case System.get_env(name) do
+          value when is_binary(value) and value != "" ->
+            if name == "FLY_APP_NAME", do: "#{value}.fly.dev", else: value
+
+          _ -> nil
+        end
+      end
+    ) || raise "Set BASE_URL or PHX_HOST to this deployment's public address"
+
+  public_url =
+    if String.contains?(public_url, "://"), do: public_url, else: "https://#{public_url}"
+
+  public_uri = URI.parse(public_url)
+
+  unless public_uri.scheme in ["http", "https"] and
+           is_binary(public_uri.host) and public_uri.host != "" and
+           public_uri.path in [nil, "", "/"] and is_nil(public_uri.query) and
+           is_nil(public_uri.fragment) and is_nil(public_uri.userinfo) do
+    raise "BASE_URL / PHX_HOST must be an HTTP(S) origin without a path, query or credentials"
+  end
+
+  config :you_congress, :base_url, String.trim_trailing(public_url, "/")
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :you_congress, YouCongressWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
+    url: [host: public_uri.host, port: public_uri.port, scheme: public_uri.scheme],
+    check_origin: [String.trim_trailing(public_url, "/")],
     http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0},
+      # Bind on all IPv4 interfaces for container hosts and reverse proxies.
+      ip: {0, 0, 0, 0},
       port: port
     ],
     secret_key_base: secret_key_base
 
-  app_name =
-    System.get_env("FLY_APP_NAME") ||
-      raise "FLY_APP_NAME not available"
-
-  config :libcluster,
-    topologies: [
-      fly6pn: [
-        strategy: Cluster.Strategy.DNSPoll,
-        config: [
-          polling_interval: 5_000,
-          query: "#{app_name}.internal",
-          node_basename: app_name
+  if app_name = System.get_env("FLY_APP_NAME") do
+    config :libcluster,
+      topologies: [
+        fly6pn: [
+          strategy: Cluster.Strategy.DNSPoll,
+          config: [
+            polling_interval: 5_000,
+            query: "#{app_name}.internal",
+            node_basename: app_name
+          ]
         ]
       ]
-    ]
+  end
 
   config :appsignal, :config,
     revision: System.get_env("APP_REVISION"),
