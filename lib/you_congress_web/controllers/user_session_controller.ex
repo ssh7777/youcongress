@@ -45,7 +45,7 @@ defmodule YouCongressWeb.UserSessionController do
         conn
         |> put_flash(
           :error,
-          "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@youcongress.org if this is an error."
+          "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@apx-lake.vercel.app if this is an error."
         )
         |> redirect(to: ~p"/log_in")
 
@@ -163,7 +163,7 @@ defmodule YouCongressWeb.UserSessionController do
   end
 
   defp blocked_account_message do
-    "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@youcongress.org if this is an error."
+    "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@apx-lake.vercel.app if this is an error."
   end
 
   defp client_ip(%Plug.Conn{remote_ip: remote_ip}) do

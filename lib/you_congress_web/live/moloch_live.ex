@@ -9,7 +9,7 @@ defmodule YouCongressWeb.MolochLive do
      |> assign(:page_title, "Moloch: Why We Race Toward Outcomes Nobody Wants")
      |> assign(
        :page_description,
-       "What is Moloch? Explore coordination failures through an interactive AI race, learn how incentives can change, and investigate proposals on YouCongress."
+       "What is Moloch? Explore coordination failures through an interactive AI race, learn how incentives can change, and investigate proposals on APX."
      )
      |> assign(:canonical_url, url(~p"/moloch"))
      |> assign(:lab_a, "safety")

@@ -3,8 +3,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
-    await query('SELECT s.id, o.id, os.statement_id, a.id FROM statements s LEFT JOIN opinions_statements os ON os.statement_id=s.id LEFT JOIN opinions o ON o.id=os.opinion_id LEFT JOIN authors a ON a.id=o.author_id LIMIT 1');
-    return Response.json({status: 'ok', mode: 'read-only-migration-preview'}, {headers: {'Cache-Control': 'no-store'}});
+    await query(`SELECT u.id, s.id, v.id, q.id, p.id
+      FROM users u
+      FULL JOIN policy_statements s ON true
+      FULL JOIN votes v ON true
+      FULL JOIN quotes q ON true
+      FULL JOIN intelligence_posts p ON true
+      LIMIT 1`);
+    return Response.json({status: 'ok', app: process.env.NEXT_PUBLIC_APP_NAME || 'APX', mode: 'read-only', schema: ['users', 'policy_statements', 'votes', 'quotes', 'intelligence_posts']}, {headers: {'Cache-Control': 'no-store'}});
   } catch {
     return Response.json({status: 'unavailable'}, {status: 503, headers: {'Cache-Control': 'no-store'}});
   }

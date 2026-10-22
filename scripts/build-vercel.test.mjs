@@ -52,7 +52,7 @@ test('backend preflight rejects arbitrary HTML and websocket-only servers', asyn
 });
 
 test('writes Build Output API config only after successful preflight', async () => {
-  const output = await mkdtemp(join(tmpdir(), 'youcongress-vercel-'));
+  const output = await mkdtemp(join(tmpdir(), 'apx-vercel-'));
   try {
     await build({PHOENIX_ORIGIN: 'https://backend.example.com'}, output, healthy);
     assert.equal(JSON.parse(await readFile(join(output, 'config.json'), 'utf8')).version, 3);

@@ -21,7 +21,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       conn = get(conn, ~p"/a/#{author.id}")
       html = html_response(conn, 200)
 
-      assert html =~ "What does Jane Expert say about AI? | YouCongress"
+      assert html =~ "What does Jane Expert say about AI? | APX"
 
       assert html =~
                ~s(<link rel="canonical" href="#{YouCongressWeb.Endpoint.url()}/x/janex">)
@@ -33,12 +33,12 @@ defmodule YouCongressWeb.SEOMetaTest do
       assert_social_card(
         html,
         "/images/social-author.png",
-        "Sourced quotes and positions from Jane Expert on YouCongress",
+        "Sourced quotes and positions from Jane Expert on APX",
         1730
       )
     end
 
-    test "canonicalizes legacy author URLs to a YouCongress username", %{conn: conn} do
+    test "canonicalizes legacy author URLs to a APX username", %{conn: conn} do
       author =
         author_fixture(%{
           name: "Jane Username",
@@ -162,7 +162,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       conn = get(conn, ~p"/h/ai-safety")
       html = html_response(conn, 200)
 
-      assert html =~ "Expert opinions on AI Safety | YouCongress"
+      assert html =~ "Expert opinions on AI Safety | APX"
       assert html =~ ~r{<h1[^>]*>\s*Expert opinions on AI Safety\s*</h1>}
       assert html =~ "1 policy proposals and claims"
       assert html =~ ~s("@type":"CollectionPage")
@@ -183,7 +183,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       conn = get(conn, ~p"/h/congreso-es")
       html = html_response(conn, 200)
 
-      assert html =~ "Expert opinions on the Spanish Congress | YouCongress"
+      assert html =~ "Expert opinions on the Spanish Congress | APX"
       assert html =~ ~r{<h1[^>]*>\s*Expert opinions on the Spanish Congress\s*</h1>}
       refute html =~ "Expert opinions on Congreso Es"
     end
@@ -192,7 +192,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       conn = get(conn, ~p"/h/us-congress")
       html = html_response(conn, 200)
 
-      assert html =~ "Expert opinions on the US Congress | YouCongress"
+      assert html =~ "Expert opinions on the US Congress | APX"
       assert html =~ ~r{<h1[^>]*>\s*Expert opinions on the US Congress\s*</h1>}
       refute html =~ "Expert opinions on US Congress"
     end
@@ -203,7 +203,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       conn = get(conn, ~p"/")
       html = html_response(conn, 200)
 
-      title = "What's new in AI governance, safety, jobs and society | YouCongress"
+      title = "What's new in AI governance, safety, jobs and society | APX"
       escaped_title = title |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
       description =
@@ -219,7 +219,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       assert_social_card(
         html,
         "/images/social-home.png",
-        "YouCongress latest sourced positions from experts, policymakers and public figures"
+        "APX latest sourced positions from experts, policymakers and public figures"
       )
 
       assert html =~ ~s("@type":"WebSite")
@@ -233,7 +233,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       html = html_response(conn, 200)
 
       assert html =~
-               "<title>Explore sourced quotes, claims, people and topics | YouCongress</title>"
+               "<title>Explore sourced quotes, claims, people and topics | APX</title>"
 
       assert html =~
                ~s(<meta name="description" content="Search sourced quotes and compare where experts, policymakers and citizens stand on consequential questions.")
@@ -243,7 +243,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       assert_social_card(
         html,
         "/images/social-explore.png",
-        "Explore sourced quotes, public figures, policy statements and topics on YouCongress"
+        "Explore sourced quotes, public figures, policy statements and topics on APX"
       )
     end
   end
@@ -254,10 +254,10 @@ defmodule YouCongressWeb.SEOMetaTest do
       html = html_response(conn, 200)
 
       assert html =~
-               ~s(<meta content="Reconsider: measure how minds change / YouCongress" property="og:title")
+               ~s(<meta content="Reconsider: measure how minds change / APX" property="og:title")
 
       assert html =~
-               ~s(<meta name="twitter:title" content="Reconsider: measure how minds change / YouCongress")
+               ~s(<meta name="twitter:title" content="Reconsider: measure how minds change / APX")
 
       assert html =~
                ~s(<link rel="canonical" href="#{YouCongressWeb.Endpoint.url()}/reconsider">)
@@ -265,7 +265,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       assert_social_card(
         html,
         "/images/social-reconsider-v2.png",
-        "Reconsider by YouCongress: measure how articles and videos change minds",
+        "Reconsider by APX: measure how articles and videos change minds",
         1200,
         630
       )
@@ -289,7 +289,7 @@ defmodule YouCongressWeb.SEOMetaTest do
       conn = get(conn, ~p"/c/#{opinion.id}")
       html = html_response(conn, 200)
 
-      assert html =~ "Quote Person on AI | YouCongress"
+      assert html =~ "Quote Person on AI | APX"
       assert html =~ ~s("@type":"Quotation")
       assert html =~ ~s(<blockquote cite="https://example.com/q")
       refute html =~ ~s(<meta name="robots" content="noindex")

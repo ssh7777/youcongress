@@ -3,7 +3,7 @@ defmodule YouCongressWeb.NewsletterLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :page_title, "Subscribe to YouCongress news")}
+    {:ok, assign(socket, :page_title, "Subscribe to APX news")}
   end
 
   @impl true
@@ -11,7 +11,7 @@ defmodule YouCongressWeb.NewsletterLive do
     ~H"""
     <div class="mx-auto max-w-lg">
       <.header class="text-center">
-        Subscribe to YouCongress news
+        Subscribe to APX news
         <:subtitle>AI governance, safety, jobs, and product updates.</:subtitle>
       </.header>
 

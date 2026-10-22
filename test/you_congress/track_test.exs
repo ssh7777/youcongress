@@ -2,7 +2,7 @@ defmodule YouCongress.TrackTest do
   use YouCongress.DataCase, async: true
   use Oban.Testing, repo: YouCongress.Repo
 
-  alias YouCongress.{AnalyticsConsent, Track}
+  alias APX.{AnalyticsConsent, Track}
   alias YouCongress.Accounts.User
   alias YouCongress.Workers.TrackWorker
 

@@ -16,7 +16,7 @@ defmodule YouCongressWeb.TopHeaderComponent do
       <div class="flex flex-wrap items-center justify-between gap-x-4 border-b border-zinc-100 py-3 text-sm">
         <div class="flex items-center gap-4">
           <.link href={~p"/"} class="text-lg font-semibold">
-            YouCongress
+            APX
           </.link>
         </div>
         <!-- Desktop Navigation -->
@@ -139,7 +139,7 @@ defmodule YouCongressWeb.TopHeaderComponent do
       href="https://github.com/youcongress/youcongress"
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="YouCongress on GitHub"
+      aria-label="APX on GitHub"
       class={[@class, "text-zinc-900 hover:text-zinc-600 transition-colors"]}
     >
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

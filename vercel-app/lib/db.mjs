@@ -1,23 +1,20 @@
 import pg from 'pg';
 import { repository } from './records.mjs';
+import { connectionSettings } from './connect.mjs';
 
 export class DatabaseUnavailable extends Error {}
 let pool;
 function connectionPool() {
-  if (!process.env.DATABASE_URL?.trim()) throw new DatabaseUnavailable('Database is not configured.');
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) throw new DatabaseUnavailable('Database is not configured.');
   if (!pool) {
-    const url = new URL(process.env.DATABASE_URL);
-    // pg connection-string SSL parameters can replace the explicit TLS settings.
-    for (const key of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert']) url.searchParams.delete(key);
     pool = new pg.Pool({
-      connectionString: url.href,
-      ssl: process.env.DATABASE_SSL === 'false' ? false : {rejectUnauthorized: true},
+      ...connectionSettings(url),
       max: 2,
       connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 10000,
       statement_timeout: 7500,
-      query_timeout: 8000,
-      allowExitOnIdle: true
+      query_timeout: 8000
     });
     pool.on('error', () => console.error('Native database pool connection failed.'));
   }

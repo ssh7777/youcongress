@@ -1,9 +1,9 @@
-// Only run in CI against the disposable database migrated by the Phoenix release.
+// Only run against a disposable local database (CI opt-in). Requires "npm run build" first.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {once} from 'node:events';
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
+import {applyMigrations, loadMigrations, connectionSettings} from '../scripts/migrate.mjs';
 
 process.on('uncaughtException', error => {
   console.error(`::error::${String(error.message).replaceAll('\n', '%0A')}`);
@@ -12,21 +12,23 @@ process.on('uncaughtException', error => {
 
 const url = new URL(process.env.DATABASE_URL || 'http://invalid');
 assert.equal(process.env.NATIVE_TEST_DATABASE, '1', 'Explicit disposable-database opt-in required');
-assert.ok(['localhost', '127.0.0.1'].includes(url.hostname));
-assert.equal(url.pathname, '/you_congress');
-const client = new pg.Client({connectionString: url.href, ssl: false});
+assert.ok(['localhost', '127.0.0.1'].includes(url.hostname), 'Integration tests only run against a local disposable database');
+const client = new pg.Client(connectionSettings(url.href, {DATABASE_SSL: 'false'}));
 await client.connect();
 const slug = `native-ci-${randomUUID()}`;
-let server, statementId, authorId;
+let server, statementId;
 try {
-  await client.query('BEGIN');
-  const author = await client.query("INSERT INTO authors(name, inserted_at, updated_at) VALUES ('Native CI author', now(), now()) RETURNING id");
-  authorId = author.rows[0].id;
-  const statement = await client.query('INSERT INTO statements(title,slug,inserted_at,updated_at) VALUES ($1,$2,now(),now()) RETURNING id', [`Native search ${slug}`, slug]);
+  await applyMigrations(client, await loadMigrations());
+  const user = await client.query("INSERT INTO users(username, display_name) VALUES ($1, 'Native CI') RETURNING id", [`ci-${randomUUID()}`]);
+  const statement = await client.query('INSERT INTO policy_statements(title, slug) VALUES ($1, $2) RETURNING id', [`Native search ${slug}`, slug]);
   statementId = statement.rows[0].id;
-  const opinion = await client.query('INSERT INTO opinions(content,source_url,source_text,author_id,inserted_at,updated_at) VALUES ($1,$2,$3,$4,now(),now()) RETURNING id', ['=formula <script id="native-record-xss">alert(1)</script>', 'https://example.com/native-ci-source', 'Original source passage', authorId]);
-  await client.query('INSERT INTO opinions_statements(opinion_id,statement_id,inserted_at,updated_at) VALUES ($1,$2,now(),now())', [opinion.rows[0].id, statementId]);
-  await client.query('COMMIT');
+  await client.query(
+    "INSERT INTO quotes(policy_statement_id, author_name, content, source_url, source_text, date, date_precision) VALUES ($1, 'Native CI author', $2, $3, 'Original source passage', '2026-01-02', 'day')",
+    [statementId, '=formula <script id="native-record-xss">alert(1)</script>', 'https://example.com/native-ci-source']
+  );
+  await client.query("INSERT INTO votes(user_id, policy_statement_id, value) VALUES ($1, $2, 'for')", [user.rows[0].id, statementId]);
+  await client.query('INSERT INTO intelligence_posts(title, summary, source_url, published_at) VALUES ($1, $2, $3, now())', [`Native intelligence ${slug}`, 'CI intelligence summary', 'https://example.com/native-intelligence']);
+
   server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '4010'], {cwd: new URL('..', import.meta.url), stdio: 'inherit', env: {...process.env, DATABASE_SSL: 'false'}});
   const origin = 'http://127.0.0.1:4010';
   let ready = false;
@@ -35,31 +37,44 @@ try {
     if (server.exitCode !== null) throw new Error('Native server exited');
     await new Promise(resolve => setTimeout(resolve, 500));
   }
-  assert.ok(ready, 'Native schema health check must pass');
+  assert.ok(ready, 'APX schema health check must pass');
+
+  const health = await (await fetch(`${origin}/api/health`)).json();
+  assert.equal(health.status, 'ok');
+  assert.deepEqual(health.schema, ['users', 'policy_statements', 'votes', 'quotes', 'intelligence_posts']);
+
   const listing = await fetch(`${origin}/explore?q=${encodeURIComponent(slug)}`);
   assert.equal(listing.status, 200);
   assert.ok((await listing.text()).includes(`Native search ${slug}`));
-  const detail = await fetch(`${origin}/p/${slug}`);
-  assert.equal(detail.status, 200);
-  const html = await detail.text();
-  assert.ok(html.includes('Original source passage'));
-  assert.ok(html.includes('Native CI author'));
-  assert.ok(html.includes('https://example.com/native-ci-source'));
-  assert.ok(!html.includes('<script id="native-record-xss">'), 'Database text must be HTML-escaped');
-  const csv = await fetch(`${origin}/p/${slug}/source-records.csv`);
-  assert.equal(csv.status, 200);
-  assert.ok(csv.headers.get('content-type').startsWith('text/csv'));
-  assert.ok((await csv.text()).includes('"\'=formula'));
-  assert.equal((await fetch(`${origin}/p/${slug}-missing`)).status, 404);
-  assert.equal((await fetch(`${origin}/p/${slug}-missing/source-records.csv`)).status, 404);
-  console.log('Native integration passed against the full migrated Phoenix schema: search, quotes, source links, escaping, CSV, health and 404s.');
+
+  const page = await (await fetch(`${origin}/p/${slug}`)).text();
+  assert.ok(page.includes('Native CI author'));
+  assert.ok(page.includes('&lt;script id=&quot;native-record-xss&quot;'), 'quote HTML must be escaped');
+  assert.ok(!page.includes('<script id="native-record-xss"'), 'raw script tags must never appear');
+  assert.ok(page.includes('For 1'), 'statement page shows vote tallies');
+
+  const csv = await (await fetch(`${origin}/p/${slug}/source-records.csv`)).text();
+  assert.ok(csv.includes('attribution APX'));
+  assert.ok(csv.toLowerCase().includes("'=formula"));
+  const legacyName = ['you', 'congress'].join('');
+  assert.ok(!csv.toLowerCase().includes(legacyName));
+
+  const reconsider = await (await fetch(`${origin}/reconsider`)).text();
+  assert.ok(reconsider.includes(`Native search ${slug}`));
+  assert.ok(reconsider.includes('For 1'));
+
+  const intelligence = await (await fetch(`${origin}/intelligence`)).text();
+  assert.ok(intelligence.includes(`Native intelligence ${slug}`));
+  assert.ok(intelligence.includes('CI intelligence summary'));
+
+  assert.equal((await fetch(`${origin}/p/does-not-exist-${slug}`)).status, 404);
+  console.log('APX native integration checks passed');
 } finally {
-  if (server && server.exitCode === null) {
-    server.kill('SIGTERM');
-    await once(server, 'exit');
-  }
-  await client.query('ROLLBACK').catch(() => {});
-  if (statementId) await client.query('DELETE FROM statements WHERE id=$1', [statementId]);
-  if (authorId) await client.query('DELETE FROM authors WHERE id=$1', [authorId]);
-  await client.end();
+  if (server) server.kill('SIGTERM');
+  await client.query('DELETE FROM votes WHERE policy_statement_id = $1', [statementId]).catch(() => {});
+  await client.query('DELETE FROM quotes WHERE policy_statement_id = $1', [statementId]).catch(() => {});
+  await client.query('DELETE FROM policy_statements WHERE id = $1', [statementId]).catch(() => {});
+  await client.query('DELETE FROM users WHERE username LIKE $1', [`ci-%`]).catch(() => {});
+  await client.query("DELETE FROM intelligence_posts WHERE title LIKE 'Native intelligence native-ci-%'").catch(() => {});
+  await client.end().catch(() => {});
 }

@@ -6,14 +6,24 @@ export const dynamic = 'force-dynamic';
 export default async function Statement({params, searchParams}) {
   const {slug} = await params;
   const page = pageNumber((await searchParams).page);
-  let statement, result;
+  let statement, result, tallies;
   try {
     statement = await records.statement(slug);
-    if (statement) result = await records.quotes(statement.id, page);
+    if (statement) {
+      result = await records.quotes(statement.id, page);
+      tallies = await records.statementTallies(statement.id);
+    }
   } catch { return <Unavailable/>; }
   if (!statement) notFound();
   const path = `/p/${encodeURIComponent(statement.slug)}`;
-  return <><p className="eyebrow">Statement</p><h1>{statement.title}</h1><p>Source-linked quotations. Stance and verification-history resolution have not been migrated; no vote totals or verification badges are inferred.</p>
+  return <><p className="eyebrow">Statement</p><h1>{statement.title}</h1>
+    <p className="tallies">
+      <span>{`${tallies.for + tallies.abstain + tallies.against} vote${(tallies.for + tallies.abstain + tallies.against) === 1 ? '' : 's'}`}</span>
+      <span>{`For ${tallies.for}`}</span>
+      <span>{`Abstain ${tallies.abstain}`}</span>
+      <span>{`Against ${tallies.against}`}</span>
+    </p>
+    <p>Source-linked quotations. Stance and verification-history resolution are not presented; no vote totals or verification badges are inferred from quotes.</p>
     <a href={`${path}/source-records.csv?page=${page}`}>Download this page’s source records (CSV)</a>
     {result.items.length ? result.items.map(q => <article key={q.id}><h2>{q.author_name || 'Unattributed author'}</h2><blockquote>{q.content}</blockquote>
       {q.date && <p>Recorded date: {q.date} ({q.date_precision || 'precision unspecified'})</p>}

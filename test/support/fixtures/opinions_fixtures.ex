@@ -4,7 +4,7 @@ defmodule YouCongress.OpinionsFixtures do
   entities via the `YouCongress.Opinions` context.
   """
 
-  alias YouCongress.{AccountsFixtures, AuthorsFixtures}
+  alias APX.{AccountsFixtures, AuthorsFixtures}
 
   @doc """
   Generate an opinion.

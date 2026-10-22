@@ -115,7 +115,7 @@ defmodule YouCongressWeb.StatementLive.AddQuote do
          put_flash(
            socket,
            :error,
-           "AI quote search uses credits. Email hello@youcongress.org to purchase access."
+           "AI quote search uses credits. Email hello@apx-lake.vercel.app to purchase access."
          )}
 
       true ->

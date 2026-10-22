@@ -1,29 +1,60 @@
-# Vercel-native migration — stage 1
+# APX on Vercel — native Next.js application
 
-This is an independently buildable Next.js application, **not yet a feature-complete
-replacement** for the Phoenix application. It requires no running Phoenix server.
-PostgreSQL is still required; Vercel Functions do not include persistent storage.
+This directory is an independently buildable Next.js application for **APX**, the
+public-records platform. It requires no running Phoenix server and is the app
+deployed by the `apx` Vercel project (Root Directory `vercel-app`).
 
-## Implemented
+## Routes
 
-- Statement browsing with bounded pagination and parameterized title search.
-- Statement pages with source-linked quotations, author names, source passages,
-  recorded dates and date precision. All database text is escaped by React.
-- A spreadsheet-safe **page-only source-record CSV** download. This intentionally
-  uses a new URL (`/p/<slug>/source-records.csv`), not the existing verified dataset
-  endpoint. It does not claim authoritative stance or verification resolution.
-- Database/schema health check (`/api/health` returns 503 on failure).
-- Explicit unavailable states without fake records or exposed database errors.
-- Read-only SQL transactions, TLS peer verification by default, small pooled
-  connections, connection/query timeouts, safe source URLs and security headers.
+- `/` — overview of the three record areas.
+- `/explore` — statement browsing with bounded pagination and parameterized title search.
+- `/reconsider` — policy statements with recorded vote tallies (for / abstain / against).
+- `/intelligence` — source-linked policy intelligence posts.
+- `/p/<slug>` — statement pages with source-linked quotations, authors, source
+  passages, recorded dates and date precision. All database text is escaped by React.
+- `/p/<slug>/source-records.csv` — spreadsheet-safe page-only source-record CSV.
+- `/api/health` — database/schema health check (`200 { "status": "ok" }`, else `503`).
 
-## Not yet migrated
+## Database schema
 
-Accounts, provider callbacks, email/SMS/Turnstile, sessions, authenticated voting,
-liquid delegation, comments/edits, hall and author detail routes, verification
-history precedence, full dataset export, MCP authentication/tools, ingestion,
-background jobs and admin/moderation. These are **not** redirected to the original
-site and no nonfunctional buttons are presented as working features.
+`migrations/001_init.sql` creates exactly these tables:
+
+| Table | Purpose |
+| --- | --- |
+| `users` | Accounts (public display names and usernames) |
+| `policy_statements` | Policy statements / claims (slug, title) |
+| `quotes` | Sourced quotations linked to a statement |
+| `votes` | Recorded votes per user and statement (`for`, `abstain`, `against`) |
+| `intelligence_posts` | Source-linked policy intelligence posts |
+
+Plus `schema_migrations`, the bookkeeping table used by the migration runner.
+
+## Migrations run automatically during deployment
+
+`npm run build` is `node scripts/migrate.mjs && next build`. The runner applies
+each SQL file in `migrations/` exactly once, inside a transaction, under a
+Postgres advisory lock so concurrent deployments cannot double-apply. When
+`DATABASE_URL` is set, a migration failure **fails the deployment build** —
+an application with a half-applied schema is never published. When
+`DATABASE_URL` is unset the runner prints a notice and the build continues;
+`/api/health` then reports `503`, which is the acceptance gate for a
+database-backed deployment.
+
+## Environment
+
+| Variable | Environments | Value |
+| --- | --- | --- |
+| `DATABASE_URL` | Production, Preview | Pooled serverless PostgreSQL connection URL (Neon / Vercel Postgres) |
+| `DATABASE_SSL` | Production, Preview | `true` (default; may be omitted). `false` only for a trusted local database |
+| `NEXT_PUBLIC_APP_NAME` | Production, Preview, Development | `APX` |
+| `NEXT_PUBLIC_APP_URL` | Production | `https://apx-lake.vercel.app` |
+| `NODE_ENV` | Production | `production` |
+
+Link a database from the Vercel Marketplace (Neon or Vercel Postgres) and copy
+its pooled connection string into `DATABASE_URL`. Use separate databases for
+production and previews when preview schema changes are possible. Never commit
+connection strings. Keep TLS peer verification enabled for public hosted
+databases.
 
 ## Run locally
 
@@ -31,41 +62,24 @@ site and no nonfunctional buttons are presented as working features.
 cd vercel-app
 npm ci
 npm test
-npm run build
 # Set DATABASE_URL through your shell or a private .env.local file.
-# DATABASE_SSL=false is only for trusted local databases without TLS.
+npm run build
 npm start
 ```
 
-Connect to an existing migrated YouCongress PostgreSQL database, preferably using
-an independently provisioned read-only role and a serverless pooled connection
-URL. No database migrations or demo seeds run during build or request handling.
-Database strings/credentials must never be committed. Verify your provider's CA
-chain rather than disabling peer verification on public connections.
-
-## Deploy a separate Vercel preview project
-
-Use the same Git repository and set **Root Directory to `vercel-app`**, Framework
-to **Next.js**, Build Command to `npm run build`, Output Directory to framework
-default. Configure `DATABASE_URL` in Vercel settings. Do not supply PHOENIX_ORIGIN.
-Do not use the repository-root gateway build command for this project.
-
-The repository-root Vercel project is deliberately unchanged: switching its
-production URL to this incomplete migration would remove existing functionality.
-Validate the separate preview before a future production cutover. A successful
-build without DATABASE_URL is not a healthy application; `/api/health` must be
-200 with `{ "status": "ok" }` before accepting a database-backed deployment.
-
 ## Verification
 
-Unit tests check SQL parameterization, wildcard escaping, pagination limits, URL
-schemes and CSV formula escaping. The existing release CI also builds this app,
-then runs `test/integration.mjs` against the complete Phoenix-migrated disposable
-PostgreSQL schema. That test inserts isolated records and checks real HTTP search,
-quote provenance, XSS escaping, CSV output and missing-record handling, then
-cleans up. It refuses nonlocal database URLs and requires an explicit CI opt-in.
+Unit tests check SQL parameterization, wildcard escaping, pagination limits,
+URL schemes, CSV formula escaping, and the migration runner (advisory lock,
+transactional apply, skip/validate behavior): `npm test`. With a disposable
+local database and `NATIVE_TEST_DATABASE=1`, `node test/integration.mjs` inserts
+isolated records and checks real HTTP search, quote provenance, XSS escaping,
+CSV output, vote tallies, intelligence posts and missing-record handling, then
+cleans up. It refuses nonlocal database URLs.
 
-Next stages should migrate author/hall browsing and authoritative verification
-resolution, then accounts/sessions/CSRF, then transactional direct voting and
-cycle-safe delegation, and finally authenticated MCP and background execution.
-Each needs feature-parity tests before enabling writes or switching production.
+Not yet migrated from the Phoenix application: accounts/provider callbacks,
+email/SMS/Turnstile, sessions, authenticated voting and liquid delegation,
+comments/edits, author and hall detail routes, verification-history precedence,
+full dataset export, MCP tools, ingestion and background jobs. These are **not**
+redirected elsewhere and no nonfunctional buttons are presented as working
+features.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run against a disposable local database only. Migrations modify the database.
 set -euo pipefail
-image="${1:-youcongress:ci}"
-container="youcongress-smoke-${GITHUB_RUN_ID:-$$}"
+image="${1:-apx:ci}"
+container="apx-smoke-${GITHUB_RUN_ID:-$$}"
 settings=(
   --network host
   -e DATABASE_URL=ecto://postgres:postgres@localhost/you_congress
@@ -20,8 +20,8 @@ trap cleanup EXIT
 docker run --rm "${settings[@]}" "$image" /app/bin/migrate
 docker run --detach --name "$container" "${settings[@]}" "$image"
 for attempt in {1..60}; do
-  if curl --fail --silent http://localhost:4000/about > /tmp/youcongress-smoke.html; then
-    grep -q '<html' /tmp/youcongress-smoke.html
+  if curl --fail --silent http://localhost:4000/about > /tmp/apx-smoke.html; then
+    grep -q '<html' /tmp/apx-smoke.html
     echo 'Production release served /about successfully.'
     PHOENIX_ORIGIN=http://localhost:4000 node scripts/build-vercel.mjs
     node scripts/check-liveview.cjs

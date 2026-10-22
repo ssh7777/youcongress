@@ -12,7 +12,7 @@ defmodule YouCongress.Contact do
 
   alias YouCongress.Mailer
 
-  @contact_email "hello@youcongress.org"
+  @contact_email "hello@apx-lake.vercel.app"
 
   @primary_key false
   embedded_schema do
@@ -49,7 +49,7 @@ defmodule YouCongress.Contact do
     email =
       new()
       |> to(@contact_email)
-      |> from({"YouCongress", @contact_email})
+      |> from({"APX", @contact_email})
       |> reply_to(contact.email)
       |> subject(contact.subject || "Contact form by #{contact.name}")
       |> text_body(

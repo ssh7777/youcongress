@@ -37,7 +37,7 @@ jobs:
       - name: Check runtime configuration
         run: elixir scripts/runtime_config_test.exs
       - name: Build production Docker release
-        run: docker build --progress=plain --tag youcongress:ci .
+        run: docker build --progress=plain --tag apx:ci .
       - name: Build and test the Vercel-native migration
         run: |
           npm ci --prefix vercel-app
@@ -50,7 +50,7 @@ jobs:
           -e DATABASE_SSL=false
           -e BASE_URL=http://localhost:4000
           -e SECRET_KEY_BASE=ci-only-secret-key-base-not-for-production-0123456789abcdef0123456789
-          youcongress:ci /app/bin/migrate
+          apx:ci /app/bin/migrate
       - name: Native integration against the migrated schema
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost/you_congress
@@ -59,12 +59,12 @@ jobs:
         run: node vercel-app/test/integration.mjs
       - name: Install browser smoke-test tools
         run: |
-          npm install --prefix /tmp/youcongress-browser playwright@1.56.1
-          /tmp/youcongress-browser/node_modules/.bin/playwright install --with-deps chromium
+          npm install --prefix /tmp/apx-browser playwright@1.56.1
+          /tmp/apx-browser/node_modules/.bin/playwright install --with-deps chromium
       - name: Migrate and smoke-test the production release
         env:
-          NODE_PATH: /tmp/youcongress-browser/node_modules
-        run: bash scripts/smoke_release.sh youcongress:ci
+          NODE_PATH: /tmp/apx-browser/node_modules
+        run: bash scripts/smoke_release.sh apx:ci
 
   regression-tests:
     runs-on: ubuntu-24.04

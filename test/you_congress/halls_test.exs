@@ -1,7 +1,7 @@
 defmodule YouCongress.HallsTest do
   use YouCongress.DataCase
 
-  alias YouCongress.{Halls, HallsStatements, Opinions}
+  alias APX.{Halls, HallsStatements, Opinions}
 
   import YouCongress.AuthorsFixtures
   import YouCongress.CountriesFixtures

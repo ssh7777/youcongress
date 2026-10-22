@@ -145,7 +145,7 @@ defmodule YouCongressWeb.UserSessionControllerTest do
       {:ok, _view, html} =
         live(conn, ~p"/log_in/magic-link/#{token}?return_to=/settings")
 
-      assert html =~ "Continue to YouCongress"
+      assert html =~ "Continue to APX"
       assert html =~ ~s(action="/log_in/magic-link/#{token}")
       assert Repo.get_by(UserToken, user_id: user.id, context: "magic_login")
     end
@@ -272,7 +272,7 @@ defmodule YouCongressWeb.UserSessionControllerTest do
       refute get_session(conn, :user_token)
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@youcongress.org if this is an error."
+               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@apx-lake.vercel.app if this is an error."
     end
 
     test "prevents login for user with blocked role", %{conn: conn, user: user} do
@@ -292,7 +292,7 @@ defmodule YouCongressWeb.UserSessionControllerTest do
       refute get_session(conn, :user_token)
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@youcongress.org if this is an error."
+               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@apx-lake.vercel.app if this is an error."
     end
 
     test "redirects to form return_to after successful login", %{conn: conn} do

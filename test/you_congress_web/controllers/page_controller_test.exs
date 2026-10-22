@@ -70,7 +70,7 @@ defmodule YouCongressWeb.PageControllerTest do
     conn = get(conn, ~p"/")
 
     html = html_response(conn, 200)
-    assert html =~ "YouCongress"
+    assert html =~ "APX"
     refute html =~ ~s(id="cookie-banner")
     refute html =~ "Cookie settings"
   end
@@ -105,7 +105,7 @@ defmodule YouCongressWeb.PageControllerTest do
     conn = get(conn, ~p"/about")
     html = html_response(conn, 200)
 
-    assert html =~ "About YouCongress"
+    assert html =~ "About APX"
     assert html =~ ~s(href="https://www.linkedin.com/in/hectorperezarenas")
     assert html =~ ">Hector Perez Arenas</a>"
     assert html =~ ~s(href="/contact")
@@ -119,7 +119,7 @@ defmodule YouCongressWeb.PageControllerTest do
     html = html_response(conn, 200)
     document = Floki.parse_document!(html)
 
-    assert html =~ "About YouCongress"
+    assert html =~ "About APX"
     assert Floki.find(document, "header a[href='/reconsider']") != []
     assert Floki.find(document, "header a[href='/reconsider/new']") == []
   end
@@ -128,7 +128,7 @@ defmodule YouCongressWeb.PageControllerTest do
     conn = get(conn, ~p"/future-of-life-foundation-epistack-award")
     html = html_response(conn, 200)
 
-    assert html =~ "YouCongress wins a $5,000 award"
+    assert html =~ "APX wins a $5,000 award"
     assert html =~ "https://youcongress.substack.com/p/our-youcongress-entry-won-a-5000"
     assert html =~ "https://flf.org/epistack-competition/"
     assert html =~ ~s(href="/h/flf-epistack")
@@ -161,7 +161,7 @@ defmodule YouCongressWeb.PageControllerTest do
     html = html_response(conn, 200)
 
     assert html =~ "Frequently asked questions"
-    assert html =~ "Who funds YouCongress?"
+    assert html =~ "Who funds APX?"
     assert html =~ ~s(href="https://www.linkedin.com/in/hectorperezarenas/")
     assert html =~ ~s(>self-funded</a>)
     assert html =~ ~s(href="/future-of-life-foundation-epistack-award")
@@ -182,7 +182,7 @@ defmodule YouCongressWeb.PageControllerTest do
 
   test "GET /email-login-waiting-list", %{conn: conn} do
     conn = get(conn, ~p"/email-login-waiting-list")
-    assert html_response(conn, 200) =~ "Waiting list for email/password login - YouCongress"
+    assert html_response(conn, 200) =~ "Waiting list for email/password login - APX"
   end
 
   test "POST /email-login-waiting-list/thanks", %{conn: conn} do
@@ -194,20 +194,20 @@ defmodule YouCongressWeb.PageControllerTest do
     conn = get(conn, ~p"/mcp-tools")
     html = html_response(conn, 200)
 
-    assert html =~ "YouCongress MCP Tools"
+    assert html =~ "APX MCP Tools"
     assert html =~ "How to Connect"
-    assert html =~ "https://youcongress.org/mcp?key=YOUR_API_KEY"
+    assert html =~ "https://apx-lake.vercel.app/mcp?key=YOUR_API_KEY"
   end
 
   test "GET /mcp/claude shows the Claude setup guide", %{conn: conn} do
     conn = get(conn, ~p"/mcp/claude")
     html = html_response(conn, 200)
 
-    assert html =~ "Use YouCongress from Claude"
+    assert html =~ "Use APX from Claude"
     assert html =~ "Access write tools"
     assert html =~ "Authorization"
     assert html =~ "Bearer YOUR_API_KEY"
-    assert html =~ "https://youcongress.org/mcp?key=YOUR_API_KEY"
+    assert html =~ "https://apx-lake.vercel.app/mcp?key=YOUR_API_KEY"
     assert html =~ "Less safe"
     assert html =~ "Log In to Get Started"
   end
@@ -216,9 +216,9 @@ defmodule YouCongressWeb.PageControllerTest do
     conn = get(conn, ~p"/mcp/chatgpt")
     html = html_response(conn, 200)
 
-    assert html =~ "Use YouCongress from ChatGPT"
-    assert html =~ "https://youcongress.org/mcp"
-    assert html =~ "https://youcongress.org/mcp?key=YOUR_API_KEY"
+    assert html =~ "Use APX from ChatGPT"
+    assert html =~ "https://apx-lake.vercel.app/mcp"
+    assert html =~ "https://apx-lake.vercel.app/mcp?key=YOUR_API_KEY"
     assert html =~ "Log In to Get Started"
   end
 

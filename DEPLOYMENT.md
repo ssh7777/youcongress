@@ -1,6 +1,32 @@
 # Production deployment
 
-## Vercel deployment: HTTP gateway + persistent Phoenix backend
+## APX on Vercel: native Next.js application (`vercel-app/`)
+
+The `apx` Vercel project deploys the native Next.js application in
+`vercel-app/` (Root Directory `vercel-app`, Framework Next.js, Build Command
+`npm run build`). It serves `/`, `/explore`, `/reconsider`, `/intelligence`,
+statement pages with CSV exports, and `/api/health` directly from Vercel
+Functions backed by serverless PostgreSQL.
+
+Database migrations run automatically during every deployment build
+(`npm run build` = `node scripts/migrate.mjs && next build`): each SQL file in
+`vercel-app/migrations/` is applied exactly once, transactionally, under a
+Postgres advisory lock. A migration failure fails the build; an unconfigured
+`DATABASE_URL` skips migrations and is reported truthfully by `/api/health`.
+
+| Variable | Environments | Value |
+| --- | --- | --- |
+| `DATABASE_URL` | Production, Preview | Pooled serverless PostgreSQL connection URL (Neon / Vercel Postgres via the Vercel Marketplace) |
+| `DATABASE_SSL` | Production, Preview | `true` (default; may be omitted) |
+| `NEXT_PUBLIC_APP_NAME` | Production, Preview, Development | `APX` |
+| `NEXT_PUBLIC_APP_URL` | Production | `https://apx-lake.vercel.app` |
+| `NODE_ENV` | Production | `production` |
+
+See `vercel-app/MIGRATION.md` for the schema (users, policy statements, votes,
+quotes, intelligence posts) and local development. The sections below describe
+the legacy HTTP gateway used by the separate `youcongress` Vercel project.
+
+## Legacy: HTTP gateway + persistent Phoenix backend
 
 This repository now includes `vercel.json` and a dependency-free Node build
 script that generates a **Vercel Build Output API v3 HTTP gateway**. Every path
@@ -11,7 +37,7 @@ static landing page. Dynamic responses are marked private/no-store.
 **Vercel still does not run the Elixir release, PostgreSQL or Oban workers.**
 Deploy the existing Dockerfile on a persistent container host first. There is no
 backend URL or database included with a Vercel connection, and this repository
-will never silently use the original YouCongress production server as yours.
+will never silently use the original APX production server as yours.
 
 ### Setup order (required)
 
@@ -89,17 +115,17 @@ Configure optional integrations using `.env.example`. In particular, update
 `GOOGLE_CALLBACK_URL` and `X_CALLBACK_URL` and register the exact same URLs in the
 OAuth provider consoles; callback allowlists and Turnstile domain settings cannot
 be updated automatically by this repository. Email sender addresses and dataset
-license attribution still identify YouCongress; they are not deployment routing.
+license attribution still identify APX; they are not deployment routing.
 
 ## Build, migrate, start
 
 On a machine with Docker:
 
 ```sh
-docker build -t youcongress .
+docker build -t apx .
 # Supply required secrets and the public origin in a private, untracked file.
-docker run --rm --env-file .env.production youcongress /app/bin/migrate
-docker run --rm --env-file .env.production -p 4000:4000 youcongress
+docker run --rm --env-file .env.production apx /app/bin/migrate
+docker run --rm --env-file .env.production -p 4000:4000 apx
 ```
 
 For Fly, `fly.toml` already runs migrations as its release command. It no longer

@@ -1,7 +1,7 @@
 defmodule YouCongressWeb.MCPServer do
   @moduledoc false
   use Anubis.Server,
-    name: "YouCongress",
+    name: "APX",
     version: "1.0.0",
     capabilities: [:tools]
 

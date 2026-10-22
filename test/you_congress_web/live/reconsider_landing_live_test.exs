@@ -81,6 +81,6 @@ defmodule YouCongressWeb.ReconsiderLandingLiveTest do
            )
 
     refute html =~ "Ask to try"
-    refute html =~ "Contact YouCongress"
+    refute html =~ "Contact APX"
   end
 end

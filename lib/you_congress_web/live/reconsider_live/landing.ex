@@ -15,7 +15,7 @@ defmodule YouCongressWeb.ReconsiderLive.Landing do
      |> assign(:page_image, url(~p"/images/social-reconsider-v2.png"))
      |> assign(
        :page_image_alt,
-       "Reconsider by YouCongress: measure how articles and videos change minds"
+       "Reconsider by APX: measure how articles and videos change minds"
      )
      |> assign(:page_image_width, 1200)
      |> assign(:page_image_height, 630)}
@@ -35,7 +35,7 @@ defmodule YouCongressWeb.ReconsiderLive.Landing do
           Discover whether your content changes minds
         </h1>
         <p class="mx-auto mt-6 max-w-2xl text-lg leading-8 text-gray-600">
-          Pair an article or video with before-and-after voting on relevant YouCongress statements,
+          Pair an article or video with before-and-after voting on relevant APX statements,
           policy proposals or claims, to see how your audience's views change.
         </p>
         <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -60,7 +60,7 @@ defmodule YouCongressWeb.ReconsiderLive.Landing do
             </span>
             <h3 class="mt-4 text-lg font-semibold text-gray-900">Choose what to reconsider</h3>
             <p class="mt-2 text-sm leading-6 text-gray-600">
-              Add your article or video, select up to three YouCongress statements, and optionally
+              Add your article or video, select up to three APX statements, and optionally
               include people featured in the content.
             </p>
           </article>
@@ -89,9 +89,9 @@ defmodule YouCongressWeb.ReconsiderLive.Landing do
         </div>
 
         <div class="mt-6 rounded-xl border border-indigo-100 bg-indigo-50 p-5 text-center">
-          <h3 class="font-semibold text-gray-900">Connected to the rest of YouCongress</h3>
+          <h3 class="font-semibold text-gray-900">Connected to the rest of APX</h3>
           <p class="mx-auto mt-2 max-w-3xl text-sm leading-6 text-gray-600">
-            Each participant’s “now” positions become their regular YouCongress votes. Anyone they
+            Each participant’s “now” positions become their regular APX votes. Anyone they
             select is added to their global delegation list, while the before-and-after record
             stays attached to this Reconsider page.
           </p>
@@ -321,7 +321,7 @@ defmodule YouCongressWeb.ReconsiderLive.Landing do
       >
         <div class="reconsider-motion-ad__header">
           <div class="reconsider-motion-ad__brand">
-            <strong>YouCongress</strong><span aria-hidden="true">/</span><em>Reconsider</em>
+            <strong>APX</strong><span aria-hidden="true">/</span><em>Reconsider</em>
           </div>
           <span class="reconsider-motion-ad__example" data-ad-example hidden>
             Illustrative example
@@ -420,13 +420,13 @@ defmodule YouCongressWeb.ReconsiderLive.Landing do
             hidden
           >
             <p class="reconsider-motion-ad__wordmark ad-up">Reconsider</p>
-            <p class="reconsider-motion-ad__byline ad-up ad-delay-short">by YouCongress</p>
+            <p class="reconsider-motion-ad__byline ad-up ad-delay-short">by APX</p>
             <p class="reconsider-motion-ad__tagline ad-up ad-delay-1">
               Discover whether your content changes minds.
             </p>
             <div class="reconsider-motion-ad__cta ad-up ad-delay-2">
               <a href={@create_path}>Create a Reconsider page</a>
-              <span>youcongress.org/reconsider/new</span>
+              <span>apx-lake.vercel.app/reconsider/new</span>
             </div>
           </div>
         </div>

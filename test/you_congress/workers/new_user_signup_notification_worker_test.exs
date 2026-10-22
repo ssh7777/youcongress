@@ -12,17 +12,17 @@ defmodule YouCongress.Workers.NewUserSignupNotificationWorkerTest do
              NewUserSignupNotificationWorker.perform(%Oban.Job{
                args: %{
                  "name" => "Ada Lovelace",
-                 "profile_url" => "https://youcongress.org/a/42"
+                 "profile_url" => "https://apx-lake.vercel.app/a/42"
                }
              })
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "hector@youcongress.org"}]
-      assert email.subject == "New YouCongress signup"
+      assert email.to == [{"", "hector@apx-lake.vercel.app"}]
+      assert email.subject == "New APX signup"
       assert email.text_body =~ "Name: Ada Lovelace"
-      assert email.text_body =~ "Profile: https://youcongress.org/a/42"
+      assert email.text_body =~ "Profile: https://apx-lake.vercel.app/a/42"
       assert email.html_body =~ "Name: Ada Lovelace"
-      assert email.html_body =~ ~s(href="https://youcongress.org/a/42")
+      assert email.html_body =~ ~s(href="https://apx-lake.vercel.app/a/42")
       refute email.text_body =~ "ada@example.com"
       refute email.html_body =~ "ada@example.com"
       true

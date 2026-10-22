@@ -1,6 +1,6 @@
 defmodule YouCongressWeb.MCPServer.StatementsSearch do
   @moduledoc """
-  Search statements (policy proposals and claims) on YouCongress.
+  Search statements (policy proposals and claims) on APX.
   Each statement has quotes from experts and public figures in favour and against.
   """
 

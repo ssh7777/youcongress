@@ -133,13 +133,13 @@ defmodule YouCongress.Opinions.Quotes.QuotatorAI do
       end
 
     """
-    You are helping populate YouCongress (youcongress.org) with real, sourced quotes from notable public figures, experts, and organisations.
+    You are helping populate APX (apx-lake.vercel.app) with real, sourced quotes from notable public figures, experts, and organisations.
 
     Statement: #{statement_title}
     Current UTC date: #{Date.to_iso8601(current_date)}
 
     Objective:
-    Find up to #{limit} real quotes from different notable authors. Every returned quote must pass all three YouCongress AI checks: quote authenticity, relevance to the COMPLETE statement, and vote classification.
+    Find up to #{limit} real quotes from different notable authors. Every returned quote must pass all three APX AI checks: quote authenticity, relevance to the COMPLETE statement, and vote classification.
 
     Research workflow:
     1. Search the web for quotes, interviews, speeches, testimony, articles, posts, reports, or transcripts about the exact statement topic.

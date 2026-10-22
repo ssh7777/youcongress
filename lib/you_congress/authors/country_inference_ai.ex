@@ -52,7 +52,7 @@ defmodule YouCongress.Authors.CountryInferenceAI do
 
   defp prompt(%Author{} = author) do
     """
-    Decide whether YouCongress should set this author's country.
+    Decide whether APX should set this author's country.
 
     Rules:
     - Set should_update=true only when the details make one country clear.

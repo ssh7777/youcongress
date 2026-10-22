@@ -2,7 +2,7 @@ defmodule YouCongressWeb.SettingsLive do
   use YouCongressWeb, :live_view
 
   alias YouCongress.Accounts.ApiKey
-  alias YouCongress.{Accounts, Authors, Countries}
+  alias APX.{Accounts, Authors, Countries}
   alias YouCongress.Newsletters
   alias YouCongressWeb.ReturnTo
 
@@ -72,7 +72,7 @@ defmodule YouCongressWeb.SettingsLive do
         {:noreply,
          socket
          |> assign(:current_user, %{user | author: socket.assigns.current_user.author})
-         |> put_flash(:info, "You are subscribed to YouCongress updates.")}
+         |> put_flash(:info, "You are subscribed to APX updates.")}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "We could not update your subscription.")}

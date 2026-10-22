@@ -125,7 +125,7 @@ defmodule YouCongressWeb.AuthorLiveTest do
       refute has_element?(show_live, "a", "Wikipedia")
     end
 
-    test "displays an author at their YouCongress username and prefers it for links", %{
+    test "displays an author at their APX username and prefers it for links", %{
       conn: conn
     } do
       author = author_fixture(%{username: "jane_congress", twitter_username: "janex"})

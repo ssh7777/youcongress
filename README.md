@@ -1,6 +1,6 @@
-# YouCongress
+# APX
 
-[YouCongress.org](https://youcongress.org) is a non-profit, open-source and open-data platform for building source-grounded knowledge bases around hard public questions. It has two connected but distinct layers:
+[apx-lake.vercel.app](https://apx-lake.vercel.app) is a non-profit, open-source and open-data platform for building source-grounded knowledge bases around hard public questions. It has two connected but distinct layers:
 
 - **Data layer:** a provenance-preserving ingestion and structure layer that turns public discourse into inspectable quote–claim records.
 - **Participation layer (beta):** a liquid-democracy interface for direct votes, optional delegation, and policy discussion.
@@ -9,7 +9,7 @@ The project’s first large focus is AI governance, safety, regulation, labour i
 
 ## The data layer
 
-YouCongress is not a truth-scoring system, an expert-representativeness survey, or a measure of how much evidential weight a speaker deserves. It is a reusable substrate for research and assessment: humans and downstream systems can inspect, challenge, correct, and extend records without having to repeat the entire ingestion process.
+APX is not a truth-scoring system, an expert-representativeness survey, or a measure of how much evidential weight a speaker deserves. It is a reusable substrate for research and assessment: humans and downstream systems can inspect, challenge, correct, and extend records without having to repeat the entire ingestion process.
 
 Each sourced quote record keeps the original material separate from derived annotations. Where available, it includes:
 
@@ -30,10 +30,10 @@ Verification is progressive: a stance cannot be verified before the quote and it
 
 ### Access and reuse
 
-- Download the [complete CSV dataset](https://youcongress.org/dataset.csv), or export sourced quotes from an individual statement page. The complete export includes statements with at least three verified quotes.
-- Browse and query public records through the no-key [MCP endpoint](https://youcongress.org/mcp). See the [MCP tool documentation](https://youcongress.org/mcp-tools) for setup and available tools.
+- Download the [complete CSV dataset](https://apx-lake.vercel.app/dataset.csv), or export sourced quotes from an individual statement page. The complete export includes statements with at least three verified quotes.
+- Browse and query public records through the no-key [MCP endpoint](https://apx-lake.vercel.app/mcp). See the [MCP tool documentation](https://apx-lake.vercel.app/mcp-tools) for setup and available tools.
 - Logged-in users can create scoped API keys for authenticated MCP tools that contribute, edit, and verify records.
-- The application code is licensed under the [MIT License](LICENSE). YouCongress’s structured annotations and metadata are released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with attribution to YouCongress. Quoted third-party material and author bios remain subject to their original rights holders; each record links to its source.
+- The application code is licensed under the [MIT License](LICENSE). APX’s structured annotations and metadata are released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with attribution to APX. Quoted third-party material and author bios remain subject to their original rights holders; each record links to its source.
 
 ### What the data layer does not yet solve
 
@@ -49,13 +49,13 @@ The participation layer uses the sourced record as a transparent input to policy
 
 The workflow has also been used to build collections for three epistemic case studies:
 
-- [COVID-19 origins](https://youcongress.org/h/covid-19-origins): 800+ sourced quotations across several claims.
-- [Eggs and health](https://youcongress.org/h/eggs-and-health): 500+ sourced quotations across several claims.
-- [LHC safety](https://youcongress.org/p/lhc-poses-no-risk-to-earth): 180+ sourced quotations on whether the LHC presents a credible risk to Earth.
+- [COVID-19 origins](https://apx-lake.vercel.app/h/covid-19-origins): 800+ sourced quotations across several claims.
+- [Eggs and health](https://apx-lake.vercel.app/h/eggs-and-health): 500+ sourced quotations across several claims.
+- [LHC safety](https://apx-lake.vercel.app/p/lhc-poses-no-risk-to-earth): 180+ sourced quotations on whether the LHC presents a credible risk to Earth.
 
 ## About
 
-YouCongress is built by [Hector Perez Arenas](https://www.linkedin.com/in/hectorperezarenas/), who leads an AI engineering team in Madrid and organizes the Madrid Elixir meetup. He also builds open-source knowledge and civic-tech systems, including [Notes.club](https://notes.club), which hosts more than 10,000 Elixir notebooks. Follow him on [Bluesky](https://bsky.app/profile/hecperez.com) or [X](https://x.com/arpahector).
+APX is built by [Hector Perez Arenas](https://www.linkedin.com/in/hectorperezarenas/), who leads an AI engineering team in Madrid and organizes the Madrid Elixir meetup. He also builds open-source knowledge and civic-tech systems, including [Notes.club](https://notes.club), which hosts more than 10,000 Elixir notebooks. Follow him on [Bluesky](https://bsky.app/profile/hecperez.com) or [X](https://x.com/arpahector).
 
 ## How to start
 
@@ -65,7 +65,7 @@ Install dependencies:
 mix deps.get
 ```
 
-Create the database, the user `admin@youcongress.org` with password `admin:1234`, and sample data:
+Create the database, the user `admin@apx-lake.vercel.app` with password `admin:1234`, and sample data:
 
 ```bash
 mix ecto.setup
@@ -85,8 +85,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for production configuration, automatic publi
 
 ## How to contribute
 
-- Email hector@youcongress.org if you would like to help validate quotes found by AI agents.
-- Take an [unassigned issue](https://github.com/youcongress/youcongress/issues).
+- Email hector@apx-lake.vercel.app if you would like to help validate quotes found by AI agents.
+- Take an [unassigned issue](https://github.com/ssh7777/youcongress/issues).
 
 ## Acknowledgments
 

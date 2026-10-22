@@ -16,7 +16,7 @@ These are separate task passes, not independent evidence sources. Agreement amon
 
 The skills used for the scheduled workflow are versioned here so contributors can inspect and reuse them:
 
-- [youcongress-topic-quotes](skills/youcongress-topic-quotes/SKILL.md) discovers eligible, sourced quotes, links each to an existing statement, and infers a candidate stance.
-- [youcongress-verify-quotes](skills/youcongress-verify-quotes/SKILL.md) performs the structured source-fidelity, quote-statement relevance, and stance checks on pending records.
+- [apx-topic-quotes](skills/apx-topic-quotes/SKILL.md) discovers eligible, sourced quotes, links each to an existing statement, and infers a candidate stance.
+- [apx-verify-quotes](skills/apx-verify-quotes/SKILL.md) performs the structured source-fidelity, quote-statement relevance, and stance checks on pending records.
 
-To make these available to Codex locally, copy the two skill directories into `~/.codex/skills/`, preserving their directory names and contents. They require access to the YouCongress MCP tools; the verification skill also includes its validation references under `references/`.
+To make these available to Codex locally, copy the two skill directories into `~/.codex/skills/`, preserving their directory names and contents. They require access to the APX MCP tools; the verification skill also includes its validation references under `references/`.

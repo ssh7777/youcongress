@@ -73,26 +73,26 @@ defmodule YouCongress.Opinions.Quotes.FreshQuoteFinderAI do
     window_start = DateTime.add(now, -(window_days * 24), :hour)
 
     """
-    You are helping populate YouCongress (youcongress.org) with real, sourced quotes from notable public figures and experts.
+    You are helping populate APX (apx-lake.vercel.app) with real, sourced quotes from notable public figures and experts.
 
     Objective:
-    Find up to #{limit} fresh quote published in the last #{window_days} days about AI governance, AI safety, AI's impact on jobs, or AI's broader implications for society, and only if the quote qualifies for at least one provided YouCongress statement.
+    Find up to #{limit} fresh quote published in the last #{window_days} days about AI governance, AI safety, AI's impact on jobs, or AI's broader implications for society, and only if the quote qualifies for at least one provided APX statement.
 
     Current UTC time: #{DateTime.to_iso8601(now)}
     Freshness window starts at UTC: #{DateTime.to_iso8601(window_start)}
 
-    Existing recent YouCongress quotes:
+    Existing recent APX quotes:
     #{Jason.encode!(recent_quotes)}
 
-    Existing YouCongress statements:
+    Existing APX statements:
     #{Jason.encode!(statements)}
 
     Research workflow:
     1. Search broadly for real quotes published in the freshness window. Try multiple query formulations, sources, authors, and statement-specific searches rather than stopping after the first unsuccessful search.
     2. Prefer primary sources: speeches, testimony, interviews, official blog posts, reports, transcripts, or accessible official social posts.
     3. Fetch the source page. Do not rely on search snippets.
-    4. Check the existing recent YouCongress quotes and do not return duplicates or substantially identical quotes.
-    5. Check the provided YouCongress statements and discard any quote that does not cover every material key idea of at least one COMPLETE statement with a determinable stance signal.
+    4. Check the existing recent APX quotes and do not return duplicates or substantially identical quotes.
+    5. Check the provided APX statements and discard any quote that does not cover every material key idea of at least one COMPLETE statement with a determinable stance signal.
     6. Keep searching after invalid or irrelevant candidates. Return no candidates only after making a thorough, persistent effort across multiple searches to find a qualifying quote.
 
     COMPLETE statement relevance standard:
