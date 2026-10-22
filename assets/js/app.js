@@ -18,7 +18,7 @@
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
 // Establish Phoenix Socket and LiveView configuration.
-import { Socket } from "phoenix"
+import { Socket, LongPoll } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import QuoteMenu from "./hooks/quote_menu"
@@ -38,6 +38,11 @@ let Hooks = {
 };
 
 let liveSocket = new LiveSocket("/live", Socket, {
+  // Vercel cannot proxy WebSocket upgrades. In gateway mode use Phoenix's
+  // HTTP transport from the first request, including the session/CSRF token.
+  ...(document.querySelector("meta[name='liveview-transport']")?.content === "longpoll"
+    ? {transport: LongPoll}
+    : {longPollFallbackMs: 2500}),
   params: {_csrf_token: csrfToken},
   hooks: Hooks
 })

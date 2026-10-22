@@ -1,18 +1,52 @@
 # Production deployment
 
-## Vercel compatibility
+## Vercel deployment: HTTP gateway + persistent Phoenix backend
 
-This repository is an **Elixir/Phoenix LiveView server**, not a static frontend.
-It needs a continuously running BEAM process, WebSockets for LiveView, PostgreSQL,
-and Oban background workers. Vercel's static hosting and supported Function
-runtimes do not run this application directly. A `vercel.json`, npm build command,
-or static export cannot fix that architectural mismatch.
+This repository now includes `vercel.json` and a dependency-free Node build
+script that generates a **Vercel Build Output API v3 HTTP gateway**. Every path
+(including assets, forms, OAuth callbacks, and LiveView polling) is rewritten to
+your own Phoenix backend, not redirected to another website or replaced by a
+static landing page. Dynamic responses are marked private/no-store.
 
-Deploy the existing Dockerfile on a container host supporting persistent processes
-and WebSockets (for example Fly.io, Render, or Railway). The full application,
-including `/live/websocket`, must be reachable on its public origin. Hosting a
-separate frontend on Vercel would require an architectural change; a catch-all
-Vercel rewrite is not a replacement for a WebSocket-capable host.
+**Vercel still does not run the Elixir release, PostgreSQL or Oban workers.**
+Deploy the existing Dockerfile on a persistent container host first. There is no
+backend URL or database included with a Vercel connection, and this repository
+will never silently use the original YouCongress production server as yours.
+
+### Setup order (required)
+
+1. Deploy the Dockerfile to your own container host. Supply `DATABASE_URL`,
+   `SECRET_KEY_BASE`, and integrations below; run `/app/bin/migrate`.
+2. Set **on the Phoenix backend**:
+   - `BASE_URL=https://<your-public-vercel-domain>` (the address users visit).
+   - `LIVEVIEW_TRANSPORT=longpoll`.
+   - Keep the secret stable across deployments and replicas. Configure clustering
+     appropriately if the backend has multiple instances.
+3. Set **in Vercel** (separately for production and previews):
+   - `PHOENIX_ORIGIN=https://<your-backend-host>` (NOT the Vercel address).
+   - Leave Framework as Other, repository root as Root Directory, and Output
+     Directory unset. The committed `vercel.json` supplies the build command.
+4. Deploy this branch to Vercel. The build checks `/about` on the backend and
+   requires both a CSRF token and the long-poll transport marker. Missing settings,
+   backend errors, redirects, or old backend code now **fail the build clearly**
+   instead of publishing a "Ready" deployment with an empty output and a 404.
+5. Verify the public gateway homepage, `/explore` search, login/logout, and an
+   authenticated vote against a staging database. Register OAuth callbacks and
+   Turnstile domains for the public Vercel address. Production side effects such
+   as emails and votes are not tested automatically against your real accounts.
+
+Vercel's HTTP rewrites do not proxy WebSocket upgrades. Gateway mode explicitly
+uses Phoenix's HTTP long-poll transport with sessions/CSRF enabled; direct
+container deployments retain WebSockets with a long-poll fallback. No arbitrary
+wildcard origin allowlist or CORS bypass is used. A preview backend must trust
+its exact preview public origin; don't share production databases with previews.
+Vercel proxy timeouts still apply to long-running HTTP requests and streamed MCP
+responses; use the backend directly for integrations requiring longer streams.
+
+Local gateway builder checks: `node --test scripts/build-vercel.test.mjs`.
+CI compiles the actual Docker backend and tests LiveView connection plus a search
+event in Chromium using long-polling. This does not by itself verify a live
+Vercel deployment or your external integrations.
 
 ## Required configuration
 

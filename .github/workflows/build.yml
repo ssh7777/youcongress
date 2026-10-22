@@ -32,11 +32,19 @@ jobs:
         with:
           otp-version: '28.3'
           elixir-version: '1.19.4'
+      - name: Test Vercel gateway builder
+        run: node --test scripts/build-vercel.test.mjs
+      - name: Install browser smoke-test tools
+        run: |
+          npm install --prefix /tmp/youcongress-browser playwright@1.56.1
+          /tmp/youcongress-browser/node_modules/.bin/playwright install --with-deps chromium
       - name: Check runtime configuration
         run: elixir scripts/runtime_config_test.exs
       - name: Build production Docker release
         run: docker build --progress=plain --tag youcongress:ci .
       - name: Migrate and smoke-test the production release
+        env:
+          NODE_PATH: /tmp/youcongress-browser/node_modules
         run: bash scripts/smoke_release.sh youcongress:ci
 
   regression-tests:

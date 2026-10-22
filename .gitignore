@@ -43,3 +43,6 @@ npm-debug.log
 .codex
 .claude
 .sprite
+
+# Vercel generated output and local project linkage
+.vercel/

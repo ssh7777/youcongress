@@ -8,6 +8,7 @@ settings=(
   -e DATABASE_URL=ecto://postgres:postgres@localhost/you_congress
   -e DATABASE_SSL=false
   -e BASE_URL=http://localhost:4000
+  -e LIVEVIEW_TRANSPORT=longpoll
   -e SECRET_KEY_BASE=ci-only-secret-key-base-not-for-production-0123456789abcdef0123456789
   -e SENDGRID_API_KEY=ci-placeholder
 )
@@ -22,6 +23,8 @@ for attempt in {1..60}; do
   if curl --fail --silent http://localhost:4000/about > /tmp/youcongress-smoke.html; then
     grep -q '<html' /tmp/youcongress-smoke.html
     echo 'Production release served /about successfully.'
+    PHOENIX_ORIGIN=http://localhost:4000 node scripts/build-vercel.mjs
+    node scripts/check-liveview.cjs
     exit 0
   fi
   if [ "$(docker inspect -f '{{.State.Running}}' "$container")" != true ]; then
