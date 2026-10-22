@@ -1,10 +1,12 @@
 import { query } from '../../../lib/db.mjs';
+import { databaseMode } from '../../../lib/database-mode.mjs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const mode = databaseMode();
     const {rows} = await query(`
       SELECT
         to_regclass('public.users') IS NOT NULL AS users,
@@ -17,7 +19,7 @@ export async function GET() {
     `);
     const healthy = Object.values(rows[0]).every(Boolean);
     if (!healthy) throw new Error('APX schema is incomplete.');
-    return Response.json({status: 'ok', database: 'postgresql', schema: '001_initial'}, {headers: {'Cache-Control': 'no-store'}});
+    return Response.json({status: 'ok', database: 'postgresql', mode, schema: '001_initial'}, {headers: {'Cache-Control': 'no-store'}});
   } catch {
     return Response.json({status: 'unavailable', database: 'postgresql'}, {status: 503, headers: {'Cache-Control': 'no-store'}});
   }

@@ -2,7 +2,7 @@
 
 [APX](https://apx-lake.vercel.app) is a source-grounded policy intelligence application. It connects policy statements to inspectable quotations, public votes, reconsideration requests, and dated intelligence analysis.
 
-The production application is the native Next.js codebase in [`vercel-app/`](vercel-app/). It runs on Vercel with serverless PostgreSQL and does not proxy the legacy website or require a Phoenix server.
+The production application is the native Next.js codebase in [`vercel-app/`](vercel-app/). It runs on Vercel with embedded PostgreSQL via PGlite and does not proxy the legacy website, require a Phoenix server, or depend on a Neon integration. Durable external PostgreSQL remains supported for a future write-enabled version.
 
 ## Public routes
 
@@ -26,7 +26,7 @@ The versioned initial migration creates:
 - intelligence posts;
 - reconsiderations.
 
-The deployment build runs pending migrations automatically before compiling Next.js. Migrations are transactional and serialized with a PostgreSQL advisory lock. Runtime record queries use read-only transactions. See [`vercel-app/MIGRATION.md`](vercel-app/MIGRATION.md) for schema, environment, and deployment details.
+The deployment build applies pending migrations automatically before compiling Next.js. Embedded function instances initialize the same versioned schema at runtime; external mode also uses transactional migrations and a PostgreSQL advisory lock. Embedded PGlite is ephemeral and appropriate only for the current read-only interface. See [`vercel-app/MIGRATION.md`](vercel-app/MIGRATION.md) for the schema, persistence boundaries, environment, and deployment details.
 
 ## Local development
 
@@ -39,7 +39,7 @@ npm test
 npm run dev
 ```
 
-Set `DATABASE_URL` in a private `.env.local` file to load records. `DATABASE_SSL=false` is only for a trusted local database without TLS.
+Set `APX_DATABASE_MODE=embedded` in a private `.env.local` file for the self-contained read-only database. To use durable external records instead, omit that variable and set `DATABASE_URL`. `DATABASE_SSL=false` is only for a trusted local database without TLS.
 
 Framework-only production preflight:
 
@@ -47,10 +47,10 @@ Framework-only production preflight:
 npm run build:next
 ```
 
-Full deployment build, including database migration:
+Full deployment build in the current embedded production mode:
 
 ```sh
-DATABASE_URL=... npm run build
+APX_DATABASE_MODE=embedded npm run build
 ```
 
 ## Legacy code

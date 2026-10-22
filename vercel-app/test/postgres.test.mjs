@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
 import {postgresConfig} from '../lib/postgres.mjs';
+import {databaseMode} from '../lib/database-mode.mjs';
+import {migrations} from '../lib/migrations.mjs';
 
 test('PostgreSQL configuration requires a PostgreSQL URL', () => {
   assert.throws(() => postgresConfig({}), /DATABASE_URL is required/);
@@ -16,8 +17,15 @@ test('connection-string SSL parameters cannot override explicit TLS settings', (
   assert.equal(local.ssl, false);
 });
 
-test('initial schema contains every required APX table without destructive statements', async () => {
-  const sql = await readFile(new URL('../migrations/001_initial.sql', import.meta.url), 'utf8');
+test('database mode is explicit and external URLs remain supported', () => {
+  assert.equal(databaseMode({APX_DATABASE_MODE: 'embedded'}), 'embedded');
+  assert.equal(databaseMode({DATABASE_URL: 'postgres://db.example.com/apx'}), 'external');
+  assert.throws(() => databaseMode({}), /APX_DATABASE_MODE=embedded/);
+});
+
+test('initial schema contains every required APX table without destructive statements', () => {
+  assert.equal(migrations[0].version, '001_initial');
+  const sql = migrations[0].sql;
   for (const table of ['users', 'policy_statements', 'votes', 'quotes', 'intelligence_posts', 'reconsiderations']) {
     assert.match(sql, new RegExp(`CREATE TABLE ${table} \\(`));
   }

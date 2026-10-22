@@ -1,6 +1,8 @@
 # APX on Vercel
 
-APX is a native Next.js application backed by serverless PostgreSQL. It does not require the legacy Phoenix server and does not forward traffic to another website.
+APX is a native Next.js application using real PostgreSQL. The current production configuration runs embedded PostgreSQL through PGlite inside the Vercel Node.js functions, so it needs no Neon account, integration, or connection string. External PostgreSQL remains supported.
+
+APX does not require the legacy Phoenix server and does not forward traffic to another website.
 
 ## Routes
 
@@ -9,24 +11,39 @@ APX is a native Next.js application backed by serverless PostgreSQL. It does not
 - `/p/<slug>` — statement details and page-only source-record CSV exports.
 - `/reconsider` — open reconsideration requests with their statement links and rationale.
 - `/intelligence` — published intelligence posts.
-- `/api/health` — database and migration health; returns 503 until the complete APX schema is available.
+- `/api/health` — database and migration health; returns 503 if the complete APX schema cannot be initialized or reached.
 
-## Database schema and migrations
+## Current embedded production mode
 
-`migrations/001_initial.sql` creates users, policy statements, votes, quotes, intelligence posts, and reconsiderations, together with constraints and indexes. `apx_schema_migrations` records applied versions.
+Set `APX_DATABASE_MODE=embedded`. Each function instance lazily starts its own in-memory PostgreSQL database and applies the same versioned migrations before answering record queries. This is appropriate because the current APX interface is read-only and ships without mutable production content.
 
-Run migrations with:
+PGlite is single-connection and ephemeral. **Do not add account, voting, ingestion, or other persistent write flows in embedded mode.** Those features require a durable external database and a deliberate data-persistence design. No nonfunctional write buttons are presented in the current interface.
+
+`serverExternalPackages` in `next.config.mjs` keeps PGlite's WASM assets compatible with Next.js production route bundles.
+
+## Schema and migrations
+
+`migrations/001_initial.mjs` contains the initial SQL schema: users, policy statements, votes, quotes, intelligence posts, and reconsiderations, with constraints and indexes. `apx_schema_migrations` records applied versions. Additional migrations are statically imported by `lib/migrations.mjs`, so the exact migration code is included in every serverless bundle.
+
+Run the deployment migration check with:
 
 ```sh
 cd vercel-app
 npm ci
-# Set DATABASE_URL and, for a local non-TLS database only, DATABASE_SSL=false.
-npm run migrate
+APX_DATABASE_MODE=embedded npm run migrate
 ```
 
-`npm run build` always runs pending migrations before `next build`. The runner uses a PostgreSQL advisory lock and one transaction per migration. It never drops existing tables or substitutes demo data. Use a database role that can create the schema during deployment; runtime SQL itself uses read-only transactions.
+`npm run build` always validates pending migrations before `next build`, in either database mode. External mode additionally uses a PostgreSQL advisory lock and one transaction per migration. Neither mode drops tables or substitutes demo records.
 
-Use a pooled Neon/Vercel Postgres connection string for serverless traffic. Production and preview databases should be separate when previews may contain schema changes. TLS certificate verification is enabled by default; do not set `DATABASE_SSL=false` for a public database.
+## Optional external PostgreSQL mode
+
+For durable external PostgreSQL, remove `APX_DATABASE_MODE` and set `DATABASE_URL` to a pooled connection string. Runtime record queries then use read-only transactions and a small connection pool.
+
+```sh
+DATABASE_URL=... npm run build
+```
+
+TLS certificate verification is enabled by default; `DATABASE_SSL=false` is only for a trusted local database. Use separate databases for production and previews when previews may contain schema changes. A deployment role must be able to create the schema during migration.
 
 ## Local verification
 
@@ -34,23 +51,28 @@ Use a pooled Neon/Vercel Postgres connection string for serverless traffic. Prod
 cd vercel-app
 npm ci
 npm test
-npm run build:next       # Framework-only preflight; does not need a database.
-DATABASE_URL=... npm run build  # Full deployment build, including migrations.
+npm run build:next                         # Framework-only preflight.
+APX_DATABASE_MODE=embedded npm run build   # Exact production database mode.
+APX_DATABASE_MODE=embedded node test/embedded-integration.mjs
 ```
 
-The integration test additionally requires a disposable local PostgreSQL database and explicit opt-in. Never point it at a production database.
+The embedded integration test checks real HTTP responses for every requested route, migrated health, empty states, and missing records. CI also tests external mode against a disposable local PostgreSQL database with record-level integration coverage. Never point the external integration test at production.
 
 ## Vercel project
 
 The Vercel project uses Root Directory `vercel-app`, Framework `nextjs`, Install Command `npm ci`, and Build Command `npm run build`.
 
-Required environment variables:
+Current environment variables:
 
-- `DATABASE_URL` (production and preview)
+- `APX_DATABASE_MODE=embedded` (production and preview)
 - `NEXT_PUBLIC_APP_NAME=APX`
 - `NEXT_PUBLIC_APP_URL=https://apx-lake.vercel.app` (production)
 - `NODE_ENV=production` (production)
 
-After deployment, `/api/health` must return HTTP 200 with `{ "status": "ok" }`. A Ready deployment with a failing health endpoint is not considered a healthy database-backed release.
+After deployment, `/api/health` must return HTTP 200 with:
 
-Accounts, authentication, authenticated voting, ingestion, and background jobs are intentionally not exposed as nonfunctional UI. The current APX interface is read-only.
+```json
+{"status":"ok","database":"postgresql","mode":"embedded","schema":"001_initial"}
+```
+
+Also verify `/`, `/explore`, `/reconsider`, and `/intelligence`; a health-only check does not prove that every PGlite route bundle can load its WASM runtime.

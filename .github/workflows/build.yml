@@ -43,6 +43,12 @@ jobs:
           npm ci --prefix vercel-app
           npm test --prefix vercel-app
           npm run build:next --prefix vercel-app
+      - name: Verify the embedded APX production database path
+        env:
+          APX_DATABASE_MODE: embedded
+        run: |
+          npm run build --prefix vercel-app
+          node vercel-app/test/embedded-integration.mjs
       - name: Migrate disposable database for Phoenix
         run: >-
           docker run --rm --network host

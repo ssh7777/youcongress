@@ -1,6 +1,8 @@
 import pg from 'pg';
 import { repository } from './records.mjs';
 import { postgresConfig } from './postgres.mjs';
+import { databaseMode, EMBEDDED_DATABASE } from './database-mode.mjs';
+import { embeddedQuery } from './embedded.mjs';
 
 export class DatabaseUnavailable extends Error {}
 let pool;
@@ -20,7 +22,7 @@ function connectionPool() {
   return pool;
 }
 
-export async function query(text, values = []) {
+async function externalQuery(text, values) {
   let client;
   try {
     client = await connectionPool().connect();
@@ -33,6 +35,16 @@ export async function query(text, values = []) {
     throw new DatabaseUnavailable('APX public records are temporarily unavailable.');
   } finally {
     client?.release();
+  }
+}
+
+export async function query(text, values = []) {
+  try {
+    if (databaseMode() === EMBEDDED_DATABASE) return await embeddedQuery(text, values);
+    return await externalQuery(text, values);
+  } catch (error) {
+    if (error instanceof DatabaseUnavailable) throw error;
+    throw new DatabaseUnavailable('APX public records are temporarily unavailable.');
   }
 }
 
