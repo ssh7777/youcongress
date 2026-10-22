@@ -1,0 +1,62 @@
+name: Provision APX database once
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Create claimable PostgreSQL and return only encrypted credentials
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          APX_PROVISION_PUBLIC_KEY: |
+            -----BEGIN PUBLIC KEY-----
+            MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEArzEX3ryRzyAq3Q7hPEi7
+            ZqKsnMWTfy9WOPDHl8KU4btRkKf4bbmaOeh/mznwWo/DmWs7W1RqQddLoCsiVbSG
+            wzzydl7LlKtxW/TOPHrllnj0LTT4fJ3MwTq2hIs/sw67QeVaV3oOKiJ8snqO+N49
+            NbU826INWAN+5lLvSmb22KkhjjvX5438JqOafk2CV556dBfxPcjAV9bcV5J9lyr6
+            vEZnhCreB3LoGXHhNd+a0aO7s0+fBMj0HZgclt0ALD2HlYHUYezxbI8LV1rQ2GGh
+            g9urGMb5g5vcg1XgLK0+VLoLDd2BXqBdtzg1VGBFmm/22oDS2hsGWSfdiXRLJe/n
+            zIMexRTMWj/zZZxmg7r/Z0p1NiLB9hwgs+kTx8PoliDsm7bG5u0N7jjqmDGjngpC
+            M12o1/s4MegzuesSjQYwRdQRI0/L7CaWPtssn7wpa8nOY9J9TAcGEsM9Ia/5cPiC
+            oFxvn+o06j9c1ZU7eswktnf6y5n6aNt2pjnzvms/83WGqjdRv/drRqACPaI5iECb
+            sH4inH0zPM3iTOTUg8xaxgfo5vUB242xEuqGPdNBakant6SxXHiuyI3b9XyxSMq4
+            w6F4OwyCwNT3P3vI//hhIN8qQee2l3G8WohqJOU4zi1YXkSvKsfA3dJ/XnHBFHcQ
+            844I1/kEUklYd44yI9MREZkCAwEAAQ==
+            -----END PUBLIC KEY-----
+        run: |
+          set -euo pipefail
+          npx --yes create-db@latest --json --region us-east-1 > /tmp/apx-prisma.json
+          node <<'NODE'
+          const {readFileSync, writeFileSync} = require('node:fs');
+          const {publicEncrypt} = require('node:crypto');
+          const database = JSON.parse(readFileSync('/tmp/apx-prisma.json', 'utf8'));
+          if (!database.success || !database.connectionString || !database.claimUrl) {
+            throw new Error('Prisma did not return a complete provisioning result.');
+          }
+          const encrypted = publicEncrypt({
+            key: process.env.APX_PROVISION_PUBLIC_KEY,
+            oaepHash: 'sha256'
+          }, Buffer.from(database.connectionString, 'utf8')).toString('base64');
+          writeFileSync('/tmp/apx-provision-comment.md', [
+            '<!-- apx-provision-v1 -->',
+            'One-time APX provisioning payload. The connection string is encrypted with a temporary public key.',
+            '',
+            `Encrypted connection string: \`${encrypted}\``,
+            '',
+            `Claim URL: ${database.claimUrl}`,
+            `Unclaimed database deletion date: ${database.deletionDate}`
+          ].join('\n'));
+          NODE
+          gh pr comment 10 --body-file /tmp/apx-provision-comment.md
