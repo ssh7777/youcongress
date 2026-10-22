@@ -18,7 +18,7 @@ The first successful change creates an HttpOnly guest session. The session ident
 
 ## Database and persistence
 
-The versioned migrations create users, guest sessions, policy statements, votes, quotes, intelligence posts, and reconsiderations. Production uses `APX_DATABASE_MODE=external` with a pooled `DATABASE_URL`.
+The versioned migrations create users, guest sessions, policy statements, votes, quotes, intelligence posts, and reconsiderations. Production uses `APX_DATABASE_MODE=external` with `DATABASE_URL`. Vercel’s Prisma Postgres integration is also supported through `PRISMA_DATABASE_URL` or `POSTGRES_URL` when `DATABASE_URL` is absent or empty.
 
 Every external deployment build:
 

@@ -26,6 +26,20 @@ test('database mode is explicit and external URLs remain supported', () => {
   assert.throws(() => databaseMode({}), /APX_DATABASE_MODE=embedded/);
 });
 
+test('Vercel Postgres integration variables are accepted without copying secrets', () => {
+  for (const key of ['PRISMA_DATABASE_URL', 'POSTGRES_URL']) {
+    const env = {APX_DATABASE_MODE: 'external', DATABASE_URL: '  ', [key]: 'postgres://user:pass@db.example.com/apx'};
+    assert.equal(databaseMode(env), 'external');
+    assert.equal(new URL(postgresConfig(env).connectionString).hostname, 'db.example.com');
+  }
+
+  const primary = postgresConfig({
+    DATABASE_URL: 'postgres://primary.example.com/apx',
+    PRISMA_DATABASE_URL: 'postgres://fallback.example.com/apx'
+  });
+  assert.equal(new URL(primary.connectionString).hostname, 'primary.example.com');
+});
+
 test('initial schema contains every required APX table without destructive statements', () => {
   assert.equal(migrations[0].version, '001_initial');
   const sql = migrations[0].sql;
