@@ -1,6 +1,9 @@
 name: Provision APX database once
 
 on:
+  push:
+    paths:
+      - .github/workflows/provision-apx-db.yml
   workflow_dispatch:
 
 permissions:
