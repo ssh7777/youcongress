@@ -16,6 +16,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
+    <meta
+      name="liveview-transport"
+      content={Application.get_env(:you_congress, :liveview_transport, "websocket")}
+    />
     <link rel="icon" type="image/svg+xml" href={~p"/images/favicon.svg"} />
     <link rel="icon" type="image/png" sizes="32x32" href={~p"/images/favicon-32x32.png"} />
     <link rel="icon" type="image/png" sizes="512x512" href={~p"/images/favicon.png"} />

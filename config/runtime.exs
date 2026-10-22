@@ -70,6 +70,16 @@ config :you_congress, :openai,
   organization_key: System.get_env("OPENAI_ORGANIZATION_KEY"),
   http_options: [recv_timeout: 60_000]
 
+# Vercel's external rewrites carry HTTP, not WebSocket upgrades. Keep the
+# backend's default transport for direct deployments, but allow gateway mode.
+liveview_transport = System.get_env("LIVEVIEW_TRANSPORT", "websocket")
+
+unless liveview_transport in ["websocket", "longpoll"] do
+  raise "LIVEVIEW_TRANSPORT must be websocket or longpoll"
+end
+
+config :you_congress, :liveview_transport, liveview_transport
+
 config :you_congress, :amplitude_api_key, System.get_env("AMPLITUDE_KEY")
 config :you_congress, :base_url, System.get_env("BASE_URL")
 

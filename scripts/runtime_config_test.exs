@@ -4,7 +4,7 @@ ExUnit.start()
 defmodule DeploymentRuntimeConfigTest do
   use ExUnit.Case, async: false
 
-  @variables ~w(BASE_URL PHX_HOST VERCEL_URL VERCEL_PROJECT_PRODUCTION_URL RENDER_EXTERNAL_URL RAILWAY_PUBLIC_DOMAIN FLY_APP_NAME DATABASE_URL DATABASE_SSL DATABASE_SSL_VERIFY SECRET_KEY_BASE FEATURE_FLAGS MCP_SESSION_REDIS_URL)
+  @variables ~w(LIVEVIEW_TRANSPORT BASE_URL PHX_HOST VERCEL_URL VERCEL_PROJECT_PRODUCTION_URL RENDER_EXTERNAL_URL RAILWAY_PUBLIC_DOMAIN FLY_APP_NAME DATABASE_URL DATABASE_SSL DATABASE_SSL_VERIFY SECRET_KEY_BASE FEATURE_FLAGS MCP_SESSION_REDIS_URL)
 
   setup do
     previous = Map.new(@variables, &{&1, System.get_env(&1)})
@@ -57,6 +57,15 @@ defmodule DeploymentRuntimeConfigTest do
     assert is_list(config()[:you_congress][YouCongress.Repo][:ssl])
     System.put_env("DATABASE_SSL", "false")
     assert config()[:you_congress][YouCongress.Repo][:ssl] == false
+  end
+
+  test "gateway mode configures the browser transport and rejects typos" do
+    System.put_env("PHX_HOST", "app.example.com")
+    assert config()[:you_congress][:liveview_transport] == "websocket"
+    System.put_env("LIVEVIEW_TRANSPORT", "longpoll")
+    assert config()[:you_congress][:liveview_transport] == "longpoll"
+    System.put_env("LIVEVIEW_TRANSPORT", "invalid")
+    assert_raise RuntimeError, ~r/LIVEVIEW_TRANSPORT/, fn -> config() end
   end
 
   test "missing public origin fails clearly rather than linking to an unrelated site" do
