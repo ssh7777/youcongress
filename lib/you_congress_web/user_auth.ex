@@ -125,7 +125,7 @@ defmodule YouCongressWeb.UserAuth do
       |> delete_resp_cookie(@remember_me_cookie)
       |> put_flash(
         :error,
-        "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@youcongress.org if this is an error."
+        "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@apx-lake.vercel.app if this is an error."
       )
       |> redirect(to: ~p"/")
       |> halt()

@@ -3,7 +3,7 @@ defmodule YouCongressWeb.MCPServer.StatementsCreate do
   Create new statements (policy proposals and claims) through the MCP server.
 
   Provide both a `title` and a `nice_slug`. The `nice_slug` becomes the public URL segment,
-  so the AI reads it as `youcongress.org/p/[nice_slug]`.
+  so the AI reads it as `apx-lake.vercel.app/p/[nice_slug]`.
 
   The caller must provide a valid API key via the `?key=` query param and own a role
   that passes `YouCongress.Accounts.Permissions.can_create_statement?/1`.

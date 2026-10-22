@@ -73,7 +73,7 @@ defmodule YouCongress.Opinions.Quotes.FreshQuoteFinderAI do
     window_start = DateTime.add(now, -(window_days * 24), :hour)
 
     """
-    You are helping populate YouCongress (youcongress.org) with real, sourced quotes from notable public figures and experts.
+    You are helping populate YouCongress (apx-lake.vercel.app) with real, sourced quotes from notable public figures and experts.
 
     Objective:
     Find up to #{limit} fresh quote published in the last #{window_days} days about AI governance, AI safety, AI's impact on jobs, or AI's broader implications for society, and only if the quote qualifies for at least one provided YouCongress statement.

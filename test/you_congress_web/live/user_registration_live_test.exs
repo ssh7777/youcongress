@@ -41,7 +41,7 @@ defmodule YouCongressWeb.UserRegistrationLiveTest do
       assert Repo.get_by(UserToken, user_id: user.id, context: "magic_login")
 
       assert_email_sent(fn email_message ->
-        assert email_message.to == [{"", "hector@youcongress.org"}]
+        assert email_message.to == [{"", "hector@apx-lake.vercel.app"}]
         assert email_message.subject == "New YouCongress signup"
         assert email_message.text_body =~ "Name: New User"
 

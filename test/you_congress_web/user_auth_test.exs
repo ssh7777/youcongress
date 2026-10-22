@@ -300,7 +300,7 @@ defmodule YouCongressWeb.UserAuthTest do
       assert %{max_age: 0} = conn.resp_cookies[@remember_me_cookie]
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@youcongress.org if this is an error."
+               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@apx-lake.vercel.app if this is an error."
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
       refute Accounts.get_user_by_session_token(user_token)
@@ -333,7 +333,7 @@ defmodule YouCongressWeb.UserAuthTest do
       assert %{max_age: 0} = conn.resp_cookies[@remember_me_cookie]
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@youcongress.org if this is an error."
+               "Your account has been blocked as it seemed spam. If you're a real person or a useful bot, please contact support@apx-lake.vercel.app if this is an error."
 
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
       refute Accounts.get_user_by_session_token(user_token)

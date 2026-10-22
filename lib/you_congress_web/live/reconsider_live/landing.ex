@@ -426,7 +426,7 @@ defmodule YouCongressWeb.ReconsiderLive.Landing do
             </p>
             <div class="reconsider-motion-ad__cta ad-up ad-delay-2">
               <a href={@create_path}>Create a Reconsider page</a>
-              <span>youcongress.org/reconsider/new</span>
+              <span>apx-lake.vercel.app/reconsider/new</span>
             </div>
           </div>
         </div>

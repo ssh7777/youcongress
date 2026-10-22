@@ -17,7 +17,7 @@ defmodule YouCongressWeb.Components.FooterComponent do
       <%= if @current_user do %>
         · <button type="button" data-cookie-settings class="hover:underline">Cookie settings</button>
       <% end %>
-      · <.link href="mailto:hello@youcongress.org" target="_blank">Contact</.link>
+      · <.link href="mailto:hello@apx-lake.vercel.app" target="_blank">Contact</.link>
     </footer>
     """
   end

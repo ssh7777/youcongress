@@ -155,7 +155,7 @@ defmodule YouCongressWeb.SEOTest do
         profile_image_url: "https://example.com/jane.png"
       }
 
-      person = SEO.person(author, "https://youcongress.org/x/janex")
+      person = SEO.person(author, "https://apx-lake.vercel.app/x/janex")
 
       assert person["@type"] == "Person"
       assert person["name"] == "Jane Expert"

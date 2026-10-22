@@ -17,7 +17,7 @@ defmodule YouCongress.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"YouCongress", "hello@youcongress.org"})
+      |> from({"YouCongress", "hello@apx-lake.vercel.app"})
       |> subject(subject)
       |> text_body(text_body_content)
       |> html_body(html_body_content)
@@ -70,7 +70,7 @@ defmodule YouCongress.Accounts.UserNotifier do
         profile_url
       )
 
-    deliver("hector@youcongress.org", "New YouCongress signup", text_body, html_body)
+    deliver("hector@apx-lake.vercel.app", "New YouCongress signup", text_body, html_body)
   end
 
   @doc """
@@ -92,7 +92,7 @@ defmodule YouCongress.Accounts.UserNotifier do
         reconsideration_url
       )
 
-    deliver("hector@youcongress.org", "New YouCongress Reconsider page", text_body, html_body)
+    deliver("hector@apx-lake.vercel.app", "New YouCongress Reconsider page", text_body, html_body)
   end
 
   defp build_html_email(title, paragraphs, button_label, button_url) do

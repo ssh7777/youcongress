@@ -196,7 +196,7 @@ defmodule YouCongressWeb.PageControllerTest do
 
     assert html =~ "YouCongress MCP Tools"
     assert html =~ "How to Connect"
-    assert html =~ "https://youcongress.org/mcp?key=YOUR_API_KEY"
+    assert html =~ "https://apx-lake.vercel.app/mcp?key=YOUR_API_KEY"
   end
 
   test "GET /mcp/claude shows the Claude setup guide", %{conn: conn} do
@@ -207,7 +207,7 @@ defmodule YouCongressWeb.PageControllerTest do
     assert html =~ "Access write tools"
     assert html =~ "Authorization"
     assert html =~ "Bearer YOUR_API_KEY"
-    assert html =~ "https://youcongress.org/mcp?key=YOUR_API_KEY"
+    assert html =~ "https://apx-lake.vercel.app/mcp?key=YOUR_API_KEY"
     assert html =~ "Less safe"
     assert html =~ "Log In to Get Started"
   end
@@ -217,8 +217,8 @@ defmodule YouCongressWeb.PageControllerTest do
     html = html_response(conn, 200)
 
     assert html =~ "Use YouCongress from ChatGPT"
-    assert html =~ "https://youcongress.org/mcp"
-    assert html =~ "https://youcongress.org/mcp?key=YOUR_API_KEY"
+    assert html =~ "https://apx-lake.vercel.app/mcp"
+    assert html =~ "https://apx-lake.vercel.app/mcp?key=YOUR_API_KEY"
     assert html =~ "Log In to Get Started"
   end
 

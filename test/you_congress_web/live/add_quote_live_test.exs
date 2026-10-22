@@ -34,7 +34,7 @@ defmodule YouCongressWeb.AddQuoteLiveTest do
         |> render_click()
 
       assert html =~
-               "AI quote search uses credits. Email hello@youcongress.org to purchase access."
+               "AI quote search uses credits. Email hello@apx-lake.vercel.app to purchase access."
     end
 
     test "adds a quote with twitter username in URL", %{conn: conn, statement: statement} do

@@ -27,7 +27,7 @@ defmodule YouCongressWeb.Plugs.DomainRedirectTest do
   end
 
   test "old production domains and deployment hosts are not redirected by default", %{conn: conn} do
-    for host <- ["youcongress.org", "www.youcongress.org", "youcongress.com",
+    for host <- ["apx-lake.vercel.app", "www.apx-lake.vercel.app", "youcongress.com",
                  "www.youcongress.com", "preview.vercel.app", "example.com"] do
       result = DomainRedirect.call(%{conn | host: host}, [])
       refute result.halted

@@ -12,7 +12,7 @@ defmodule YouCongress.Contact do
 
   alias YouCongress.Mailer
 
-  @contact_email "hello@youcongress.org"
+  @contact_email "hello@apx-lake.vercel.app"
 
   @primary_key false
   embedded_schema do
