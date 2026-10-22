@@ -17,7 +17,7 @@ defmodule YouCongressWeb.SEO do
   the author page, sorted by frequency.
   """
   def author_title(name, halls) do
-    "What does #{name} say about #{author_topic(halls)}? | YouCongress"
+    "What does #{name} say about #{author_topic(halls)}? | APX"
   end
 
   def author_description(name, halls) do
@@ -58,7 +58,7 @@ defmodule YouCongressWeb.SEO do
   end
 
   def hall_title(hall_name) do
-    "Expert opinions on #{StringUtils.titleize_hall(hall_name)} | YouCongress"
+    "Expert opinions on #{StringUtils.titleize_hall(hall_name)} | APX"
   end
 
   def hall_description(hall_name, stats \\ nil)
@@ -85,7 +85,7 @@ defmodule YouCongressWeb.SEO do
   """
   def opinion_title(opinion) do
     name = opinion.author.name || opinion.author.twitter_username || "Anonymous"
-    "#{name} on #{opinion_topic(opinion)} | YouCongress"
+    "#{name} on #{opinion_topic(opinion)} | APX"
   end
 
   def opinion_description(opinion) do
@@ -203,7 +203,7 @@ defmodule YouCongressWeb.SEO do
     %{
       "@context" => "https://schema.org",
       "@type" => "WebSite",
-      "name" => "YouCongress",
+      "name" => "APX",
       "url" => url(~p"/"),
       "potentialAction" => %{
         "@type" => "SearchAction",
@@ -217,7 +217,7 @@ defmodule YouCongressWeb.SEO do
   end
 
   @doc """
-  Canonical path for an author, preferring their YouCongress username, then X username.
+  Canonical path for an author, preferring their APX username, then X username.
   /a/:id and /x/:twitter_username pages canonicalize to it so the routes don't compete.
   """
   def author_path(%{username: username}) when is_binary(username) and username != "",

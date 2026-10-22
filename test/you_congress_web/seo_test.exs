@@ -10,19 +10,19 @@ defmodule YouCongressWeb.SEOTest do
       halls = [{"ai-safety", 5}, {"open-source", 2}]
 
       assert SEO.author_title("Jane Expert", halls) ==
-               "What does Jane Expert say about AI Safety? | YouCongress"
+               "What does Jane Expert say about AI Safety? | APX"
     end
 
     test "skips the generic all/ai halls" do
       halls = [{"all", 9}, {"ai", 7}, {"existential-risk", 3}]
 
       assert SEO.author_title("Jane Expert", halls) ==
-               "What does Jane Expert say about Existential Risk? | YouCongress"
+               "What does Jane Expert say about Existential Risk? | APX"
     end
 
     test "falls back to AI without halls" do
       assert SEO.author_title("Jane Expert", []) ==
-               "What does Jane Expert say about AI? | YouCongress"
+               "What does Jane Expert say about AI? | APX"
     end
   end
 

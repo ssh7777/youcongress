@@ -10,7 +10,7 @@ defmodule YouCongressWeb.ContactLive do
     <div class="mx-auto max-w-xl px-4 py-8 sm:px-6">
       <.header class="text-center">
         Contact us
-        <:subtitle>Send a message to the YouCongress team.</:subtitle>
+        <:subtitle>Send a message to the APX team.</:subtitle>
       </.header>
 
       <.simple_form

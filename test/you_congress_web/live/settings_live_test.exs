@@ -5,7 +5,7 @@ defmodule YouCongressWeb.SettingsLiveTest do
   import YouCongress.AccountsFixtures
   import YouCongress.CountriesFixtures
 
-  alias YouCongress.{Accounts, Authors, Newsletters}
+  alias APX.{Accounts, Authors, Newsletters}
   alias YouCongress.Accounts.UserToken
   alias YouCongress.Repo
 
@@ -28,14 +28,14 @@ defmodule YouCongressWeb.SettingsLiveTest do
       {:ok, settings_live, html} = live(conn, ~p"/settings")
       assert html =~ "Settings"
       assert html =~ "Name: Someone"
-      assert html =~ "YouCongress username"
+      assert html =~ "APX username"
       assert html =~ "author[username]"
       assert has_element?(settings_live, "#username-form")
       assert has_element?(settings_live, "#profile-form")
       refute html =~ "reserved as a special perk"
     end
 
-    test "users can set a normalized YouCongress username", %{
+    test "users can set a normalized APX username", %{
       conn: conn,
       current_user: current_user
     } do
@@ -52,7 +52,7 @@ defmodule YouCongressWeb.SettingsLiveTest do
       assert has_element?(settings_live, "input[name='author[username]'][value='my_profile']")
     end
 
-    test "YouCongress usernames must be unique", %{
+    test "APX usernames must be unique", %{
       conn: conn,
       current_user: current_user
     } do
@@ -68,7 +68,7 @@ defmodule YouCongressWeb.SettingsLiveTest do
       assert Authors.get_author!(current_user.author_id).username == nil
     end
 
-    test "YouCongress usernames must contain between five and fifteen characters", %{
+    test "APX usernames must contain between five and fifteen characters", %{
       conn: conn,
       current_user: current_user
     } do

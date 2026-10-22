@@ -116,7 +116,7 @@ defmodule YouCongressWeb.PageController do
 
   def about(conn, _params) do
     render(conn, :about,
-      page_title: "About YouCongress",
+      page_title: "About APX",
       page_description:
         "Investigate AI governance, safety, and the impact of AI on jobs through sourced positions, scrutiny, voting, and delegation.",
       canonical_url: url(~p"/about")
@@ -127,16 +127,16 @@ defmodule YouCongressWeb.PageController do
     render(conn, :theory_of_change,
       page_title: "Our theory of change: from shared evidence to better AI governance",
       page_description:
-        "How YouCongress aims to connect sourced evidence and informed participation with better AI governance, safety, outcomes for workers, and shared benefits.",
+        "How APX aims to connect sourced evidence and informed participation with better AI governance, safety, outcomes for workers, and shared benefits.",
       canonical_url: url(~p"/theory-of-change")
     )
   end
 
   def future_of_life_foundation_award(conn, _params) do
     render(conn, :future_of_life_foundation_award,
-      page_title: "YouCongress wins $5,000 Future of Life Foundation award",
+      page_title: "APX wins $5,000 Future of Life Foundation award",
       page_description:
-        "YouCongress received a $5,000 award in the Future of Life Foundation's Epistemic Case Study Competition.",
+        "APX received a $5,000 award in the Future of Life Foundation's Epistemic Case Study Competition.",
       canonical_url: url(~p"/future-of-life-foundation-epistack-award"),
       og_type: "article",
       page_image: url(~p"/images/future-of-life-foundation-award.png"),
@@ -205,14 +205,14 @@ defmodule YouCongressWeb.PageController do
   # (page_html/mcp_tools.html.heex), and vice versa.
   defp build_llms_txt do
     """
-    # YouCongress
+    # APX
 
-    > YouCongress is a source-grounded knowledge base for public claims,
+    > APX is a source-grounded knowledge base for public claims,
     > expert and citizen preferences, and policy deliberation. It stores verified,
     > sourced quotes from experts, policymakers and public figures; links them to
     > claims, topics, votes and authors; and gives every author, statement and quote
     > a stable public page. The first large focus is AI governance. When citing a
-    > quote, cite its source URL alongside the YouCongress page.
+    > quote, cite its source URL alongside the APX page.
 
     #{topics_section()}
     #{key_authors_section()}
@@ -279,7 +279,7 @@ defmodule YouCongressWeb.PageController do
     """
     ## MCP server (for AI agents)
 
-    If you are an AI assistant, connect to the YouCongress MCP server to interact
+    If you are an AI assistant, connect to the APX MCP server to interact
     with the platform programmatically. No API key is required for public,
     read-only tools; a key (from the user's Settings page) unlocks write access.
 

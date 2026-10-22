@@ -51,7 +51,7 @@ defmodule YouCongressWeb.LatestLive.Index do
       |> assign(:return_to, ReturnTo.from_url(url))
       |> assign(
         :page_title,
-        "What's new in AI governance, safety, jobs and society | YouCongress"
+        "What's new in AI governance, safety, jobs and society | APX"
       )
       |> assign(:skip_page_suffix, true)
       |> assign(
@@ -62,7 +62,7 @@ defmodule YouCongressWeb.LatestLive.Index do
       |> assign(:page_image, url(~p"/images/social-home.png"))
       |> assign(
         :page_image_alt,
-        "YouCongress latest sourced positions from experts, policymakers and public figures"
+        "APX latest sourced positions from experts, policymakers and public figures"
       )
       |> assign(:page_image_width, 1731)
       |> assign(:page_image_height, 909)

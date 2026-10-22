@@ -3,14 +3,14 @@
   <head prefix="og: https://ogp.me/ns#">
     <% social_title =
       cond do
-        !assigns[:page_title] -> "YouCongress"
+        !assigns[:page_title] -> "APX"
         assigns[:skip_page_suffix] -> assigns[:page_title]
-        true -> "#{assigns[:page_title]} / YouCongress"
+        true -> "#{assigns[:page_title]} / APX"
       end %>
     <% social_image = assigns[:page_image] || url(~p"/images/og-default.png") %>
     <% social_image_alt =
       assigns[:page_image_alt] ||
-        "YouCongress — sourced public positions on consequential questions" %>
+        "APX — sourced public positions on consequential questions" %>
     <% social_image_width = assigns[:page_image_width] || 1200 %>
     <% social_image_height = assigns[:page_image_height] || 630 %>
     <meta charset="utf-8" />
@@ -29,13 +29,13 @@
         <title>{assigns[:page_title]}</title>
         <meta content={social_title} property="og:title" />
       <% else %>
-        <.live_title suffix=" / YouCongress">
+        <.live_title suffix=" / APX">
           {assigns[:page_title]}
         </.live_title>
         <meta content={social_title} property="og:title" />
       <% end %>
     <% else %>
-      <title>YouCongress</title>
+      <title>APX</title>
     <% end %>
     <%= if assigns[:page_description] do %>
       <meta name="description" content={assigns[:page_description]} />
@@ -48,7 +48,7 @@
     <% end %>
     <meta property="og:type" content={assigns[:og_type] || "website"} />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:site_name" content="YouCongress" />
+    <meta property="og:site_name" content="APX" />
     <meta property="og:image" content={social_image} />
     <meta property="og:image:url" content={social_image} />
     <meta property="og:image:secure_url" content={social_image} />
@@ -67,8 +67,8 @@
       <meta name="robots" content="noindex" />
     <% end %>
 
-    <%!-- Discovery hints for AI assistants/agents: YouCongress exposes an MCP server. --%>
-    <link rel="llms" type="text/markdown" href={~p"/llms.txt"} title="YouCongress for AI agents" />
+    <%!-- Discovery hints for AI assistants/agents: APX exposes an MCP server. --%>
+    <link rel="llms" type="text/markdown" href={~p"/llms.txt"} title="APX for AI agents" />
     <meta name="mcp-server" content={url(~p"/mcp")} />
 
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
@@ -93,7 +93,7 @@
       <div>
         <p class="font-semibold text-zinc-900">Your privacy choices</p>
         <p id="cookie-banner-description" class="mt-1 text-sm leading-5 text-zinc-600">
-          With your permission, we use optional analytics to understand how YouCongress is used
+          With your permission, we use optional analytics to understand how APX is used
           and improve the site. We only do this if you accept. <a
             href={~p"/privacy-policy"}
             class="font-medium text-blue-700 underline hover:text-blue-800"

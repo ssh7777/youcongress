@@ -10,7 +10,7 @@ defmodule YouCongress.Opinions.Quotes.QuotatorTest do
   alias YouCongress.Opinions.Quotes.Quotator
   alias YouCongress.Workers.QuotatorWorker
   alias YouCongress.Workers.VerificationWorker
-  alias YouCongress.{Authors, Votes, Opinions}
+  alias APX.{Authors, Votes, Opinions}
 
   defp candidate(attrs \\ %{}) do
     Map.merge(

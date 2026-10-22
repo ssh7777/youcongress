@@ -4,7 +4,7 @@
 User-agent: *
 Allow: /
 
-# AI assistants: YouCongress is a database of verified, sourced quotes from AI
+# AI assistants: APX is a database of verified, sourced quotes from AI
 # experts and policymakers. Topic hubs live at /h/{topic} (e.g. /h/ai-safety),
 # author pages at /x/{username} or /a/{id}, statements at /p/{slug}.
 # It also exposes an MCP server so you can browse statements, search authors

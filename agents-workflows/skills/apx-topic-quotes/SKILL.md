@@ -1,35 +1,35 @@
 ---
-name: youcongress-topic-quotes
-description: Find quotes on the internet that are not already present on YouCongress, validate them, and add them to YouCongress through MCP tools, linking each quote to an existing YouCongress statement. Use for requests to add sourced quotes from experts, public figures, or notable institutions about a topic, all existing statements matching a topic, one specific statement, or a list of statement IDs. Use only authors who have no opinion already on the target statement, and do not repeat authors.
+name: apx-topic-quotes
+description: Find quotes on the internet that are not already present on APX, validate them, and add them to APX through MCP tools, linking each quote to an existing APX statement. Use for requests to add sourced quotes from experts, public figures, or notable institutions about a topic, all existing statements matching a topic, one specific statement, or a list of statement IDs. Use only authors who have no opinion already on the target statement, and do not repeat authors.
 ---
 
-# YouCongress Topic Quotes
+# APX Topic Quotes
 
 ## Overview
 
-Find candidate quotes on the public internet that are not already present on YouCongress, then add them to YouCongress via MCP tools and link each quote to an existing relevant statement. Support both single-quote and bulk requests; when the user gives a number, continue until that many valid non-duplicate quotes have been added or no more usable candidates can be found.
+Find candidate quotes on the public internet that are not already present on APX, then add them to APX via MCP tools and link each quote to an existing relevant statement. Support both single-quote and bulk requests; when the user gives a number, continue until that many valid non-duplicate quotes have been added or no more usable candidates can be found.
 
-The target must come from the user's request or the skill invocation. The target can be a topic, one statement ID, several statement IDs, a statement title, or a request such as "all existing statements about `<topic>`." If no topic or statement target is provided, ask for one before using YouCongress write tools.
+The target must come from the user's request or the skill invocation. The target can be a topic, one statement ID, several statement IDs, a statement title, or a request such as "all existing statements about `<topic>`." If no topic or statement target is provided, ask for one before using APX write tools.
 
-Author eligibility is mandatory: find and add quotes from authors who have no opinion already on this YouCongress statement. Don't repeat authors.
+Author eligibility is mandatory: find and add quotes from authors who have no opinion already on this APX statement. Don't repeat authors.
 
 For author selection, prefer subject-matter experts with directly relevant credentials, such as researchers, academics, technical practitioners, or officials with domain responsibility. When suitable expert sources are scarce, use other eligible authoritative sources, including relevant journalists, institutional leaders, advocates, or notable organizations. Do not block a well-supported quote solely because its eligible author is not an expert.
 
-Source-author quality is mandatory: only use quotes from subject-matter experts, public officials, elected leaders, judges, regulators, executives, researchers, academics, journalists, authors, advocates, institutional leaders, notable organizations, named declarations/open letters, or other public figures with relevant expertise, authority, or public accountability. Every quote must map to exactly one YouCongress author. Prefer one natural person or one organization. Use a collective text, declaration, open letter, or manifesto as the author only when the document itself has a distinct public identity and the quoted text is presented as the collective position of that named entity, for example `The Pro-Human AI Declaration`, and only when it is directly relevant to the target statement. In that case, create or reuse an author for the named collective text or declaration. Do not use posts, essays, reports, scientific papers, preprints, letters, or petitions whose quote would need to be attributed to multiple named people, a loose list of signatories, or an ambiguous author group. Do not use quotes from anonymous people, pseudonymous accounts, Reddit commenters, forum commenters, YouTube/TikTok/Instagram commenters, generic social-media users, customer reviews, poll respondents, or other private individuals whose relevance is only that they expressed an opinion online.
+Source-author quality is mandatory: only use quotes from subject-matter experts, public officials, elected leaders, judges, regulators, executives, researchers, academics, journalists, authors, advocates, institutional leaders, notable organizations, named declarations/open letters, or other public figures with relevant expertise, authority, or public accountability. Every quote must map to exactly one APX author. Prefer one natural person or one organization. Use a collective text, declaration, open letter, or manifesto as the author only when the document itself has a distinct public identity and the quoted text is presented as the collective position of that named entity, for example `The Pro-Human AI Declaration`, and only when it is directly relevant to the target statement. In that case, create or reuse an author for the named collective text or declaration. Do not use posts, essays, reports, scientific papers, preprints, letters, or petitions whose quote would need to be attributed to multiple named people, a loose list of signatories, or an ambiguous author group. Do not use quotes from anonymous people, pseudonymous accounts, Reddit commenters, forum commenters, YouTube/TikTok/Instagram commenters, generic social-media users, customer reviews, poll respondents, or other private individuals whose relevance is only that they expressed an opinion online.
 
 Do not default to quotes that support a statement. Treat `for`, `against`, and `abstain` as equally eligible outcomes when each is supported by a valid quote. Aim for a balanced mix of positions on each statement, but add any strong, eligible position when that is what the available evidence supports.
 
 Do not call `quotes_verify`, `opinion_statements_verify`, or `votes_verify` in this workflow. You are adding a candidate quote, not verifying it.
 
-If YouCongress admin MCP tools are not already loaded, use tool discovery for tools such as `quotes_list`, `statements_list`, `quotes_search`, `authors_search`, `authors_create`, `opinions_create`, and `opinions_statements_add`.
+If APX admin MCP tools are not already loaded, use tool discovery for tools such as `quotes_list`, `statements_list`, `quotes_search`, `authors_search`, `authors_create`, `opinions_create`, and `opinions_statements_add`.
 
-Use parallelism whenever searches or reads are independent: batch web searches, batch source fetches, and parallel YouCongress duplicate/author lookups. Do not parallelize dependent writes for the same candidate; create the opinion first, then link it.
+Use parallelism whenever searches or reads are independent: batch web searches, batch source fetches, and parallel APX duplicate/author lookups. Do not parallelize dependent writes for the same candidate; create the opinion first, then link it.
 
 ## Workflow
 
 ### 0. Capture the target
 
-Identify the requested target exactly enough to search YouCongress statements and external sources. A target can be:
+Identify the requested target exactly enough to search APX statements and external sources. A target can be:
 
 - one topic such as `AI copyright lawsuits`, `carbon capture subsidies`, or `drug price negotiation`
 - multiple topics in one request
@@ -40,9 +40,9 @@ Use provided topics as search constraints, not as permission to create new state
 
 If the user provides statement IDs, target only those statements unless they also ask for related statements. If the user names a specific statement, target that statement first. If the user gives only a broad topic, build a working set of existing statements about that topic.
 
-### 1. Inventory YouCongress first
+### 1. Inventory APX first
 
-Use `quotes_list` to get the most recent 100 YouCongress quotes so you do not add the same quote again.
+Use `quotes_list` to get the most recent 100 APX quotes so you do not add the same quote again.
 
 Use `statements_list` to identify existing statements about the provided topic and see how many quotes each has. Prefer statements that are explicitly about the topic's complete claim, policy, event, actor, or controversy rather than statements that merely share a broad theme.
 
@@ -56,7 +56,7 @@ For bulk work, search each candidate statement with `quotes_search` using the st
 
 ### 2. Build a parallel source-search plan
 
-Search the public internet for real quotes from notable public figures, subject-matter experts, institutions, witnesses, officials, researchers, journalists, or authors about the topic and at least one candidate existing statement. Search subject-matter experts first; expand to other eligible authoritative authors when expert sources are scarce. Only use quotes that are absent from YouCongress and from authors who have no opinion already on the target YouCongress statement. Do not repeat authors within the current task. If the user specifies a recency window, enforce it using today's date from the environment; otherwise do not impose a freshness limit.
+Search the public internet for real quotes from notable public figures, subject-matter experts, institutions, witnesses, officials, researchers, journalists, or authors about the topic and at least one candidate existing statement. Search subject-matter experts first; expand to other eligible authoritative authors when expert sources are scarce. Only use quotes that are absent from APX and from authors who have no opinion already on the target APX statement. Do not repeat authors within the current task. If the user specifies a recency window, enforce it using today's date from the environment; otherwise do not impose a freshness limit.
 
 Avoid sources whose quoted speaker is merely a commenter or ordinary participant, even if the quote is easy to verify. Reddit threads, comment sections, forum posts, product reviews, and anonymous or pseudonymous social posts are not usable quote sources unless the author is independently identifiable as an expert or public figure and the account/source is attributable to them.
 
@@ -111,7 +111,7 @@ Confirm all of the following before creating anything:
 
 If any check fails, discard the candidate and start again.
 
-### 5. Check YouCongress for duplicates
+### 5. Check APX for duplicates
 
 Use `quotes_search` before creating anything.
 
@@ -130,7 +130,7 @@ For bulk work, run duplicate checks in parallel for multiple validated candidate
 
 ### 6. Find the best matching existing statement
 
-Use `statements_list` and any available statement search tools to find an existing YouCongress statement that the quote addresses.
+Use `statements_list` and any available statement search tools to find an existing APX statement that the quote addresses.
 
 A quote qualifies only if it either:
 
@@ -155,7 +155,7 @@ If the vote would require outside context or interpretation, discard the candida
 
 Use `authors_search`. Reuse an existing author if present.
 
-Only find and add authors who have no opinion already on this youcongress statement. Don't repeat authors.
+Only find and add authors who have no opinion already on this APX statement. Don't repeat authors.
 
 Only use `authors_create` if no matching author exists. Use the public figure's, expert's, institution's, or named collective text's common name and accurate identifying details supported by the source or reliable public information. For a named declaration, open letter, manifesto, or similar collective entity, create the author for the named text/entity itself, not for the individual signatories, and only when the source supports that the quote is the collective position of that entity. Do not create authors for Reddit users, forum handles, anonymous or pseudonymous accounts, customer reviewers, poll respondents, ordinary private individuals, ad hoc groups of coauthors, lists of signatories, or multi-author papers/posts unless they are independently identifiable as one organization or one named collective entity relevant to the statement.
 
@@ -165,7 +165,7 @@ For bulk work, run `authors_search` in parallel for candidates that passed sourc
 
 Use `opinions_create` with the exact quote, source URL, author, date, and `date_precision`. Use the most precise publication date supported by the source.
 
-Then use the YouCongress MCP tool `opinions_statements_add` with the statement ID and inferred `vote_answer`.
+Then use the APX MCP tool `opinions_statements_add` with the statement ID and inferred `vote_answer`.
 
 For bulk work, process writes candidate-by-candidate. After each successful `opinions_create`, immediately link it with `opinions_statements_add` before moving to the next candidate, so partial progress remains coherent if a later candidate fails.
 
@@ -175,7 +175,7 @@ Re-open or re-fetch the source and confirm:
 
 - quote text is exact
 - author is correct
-- author maps to exactly one YouCongress author record, not multiple people or an ambiguous coauthor/signatory list
+- author maps to exactly one APX author record, not multiple people or an ambiguous coauthor/signatory list
 - author qualifies as an expert, public figure, notable institution, or other authoritative/publicly accountable source
 - any named declaration, open letter, manifesto, or similar collective author has a distinct public identity and is directly relevant to the linked statement
 - date and date precision are supported by the source

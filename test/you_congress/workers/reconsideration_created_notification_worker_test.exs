@@ -16,7 +16,7 @@ defmodule YouCongress.Workers.ReconsiderationCreatedNotificationWorkerTest do
 
     assert_email_sent(fn email ->
       assert email.to == [{"", "hector@apx-lake.vercel.app"}]
-      assert email.subject == "New YouCongress Reconsider page"
+      assert email.subject == "New APX Reconsider page"
       assert email.text_body =~ "Creator: Ada Lovelace"
       assert email.text_body =~ "Page: https://apx-lake.vercel.app/@ada/r/analytical-engine"
       assert email.html_body =~ "Creator: Ada Lovelace"

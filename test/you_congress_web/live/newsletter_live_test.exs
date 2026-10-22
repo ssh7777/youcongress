@@ -7,7 +7,7 @@ defmodule YouCongressWeb.NewsletterLiveTest do
   test "links to the official Substack signup page", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/subscribe")
 
-    assert html =~ "Subscribe to YouCongress news"
+    assert html =~ "Subscribe to APX news"
 
     assert has_element?(
              view,

@@ -12,23 +12,31 @@ export default async function Statement({params, searchParams}) {
   const {slug} = await params;
   const paramsQuery = await searchParams;
   const page = pageNumber(paramsQuery.page);
-  let statement, result, user, currentVote;
+  let statement, result, user, currentVote, tallies;
   const canWrite = databaseMode() === EXTERNAL_DATABASE;
   try {
     [statement, user] = await Promise.all([records.statement(slug), currentUser()]);
-    if (statement) [result, currentVote] = await Promise.all([
+    if (statement) [result, currentVote, tallies] = await Promise.all([
       records.quotes(statement.id, page),
-      records.voteForUser(statement.id, user?.id)
+      records.voteForUser(statement.id, user?.id),
+      records.statementTallies(statement.id)
     ]);
   } catch { return <Unavailable/>; }
   if (!statement) notFound();
   const path = `/p/${encodeURIComponent(statement.slug)}`;
   const owner = user?.id === statement.created_by;
+  const totalVotes = tallies.for + tallies.abstain + tallies.against;
 
   return <>
     <p className="eyebrow">Policy statement</p><h1>{statement.title}</h1>
     {statement.description && <p className="lede-small">{statement.description}</p>}
     <FormMessage params={paramsQuery}/>
+    <p className="tallies">
+      <span>{`${totalVotes} vote${totalVotes === 1 ? '' : 's'}`}</span>
+      <span>{`For ${tallies.for}`}</span>
+      <span>{`Abstain ${tallies.abstain}`}</span>
+      <span>{`Against ${tallies.against}`}</span>
+    </p>
     {canWrite && <div className="record-actions"><form method="post" action="/api/mutate" className="vote-form">
       <input type="hidden" name="resource" value="vote"/><input type="hidden" name="operation" value="set"/><input type="hidden" name="statement_id" value={statement.id}/><input type="hidden" name="returnTo" value={path}/>
       <span>Your vote:</span>{['for', 'against', 'abstain'].map(position => <button key={position} type="submit" name="position" value={position} className={currentVote === position ? 'selected' : 'secondary'} aria-pressed={currentVote === position}>{position}</button>)}

@@ -32,7 +32,7 @@ defmodule YouCongressWeb.AccountCompletionBanner do
           <p class="font-semibold">
             {if @prompt == :phone,
               do: "Verify your phone",
-              else: "Get YouCongress updates"}
+              else: "Get APX updates"}
           </p>
           <p :if={@prompt == :phone} class="mt-0.5 text-indigo-800">
             Optional · Phone verification helps reduce spam and abuse.

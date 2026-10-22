@@ -1,19 +1,19 @@
 ---
-name: youcongress-verify-quotes
-description: Verify one or more recent unverified YouCongress quotes and their linked statement stances, using parallel validation for independent quotes when possible. Use when asked to check quote authenticity, source attribution, opinion-statement relevance, unlink contradicted quote or relevance associations, or vote answers for existing YouCongress opinions by using quotes_recent_unverified, quotes_verify, opinion_statements_verify, opinions_statements_remove, and votes_verify MCP tools.
+name: apx-verify-quotes
+description: Verify one or more recent unverified APX quotes and their linked statement stances, using parallel validation for independent quotes when possible. Use when asked to check quote authenticity, source attribution, opinion-statement relevance, unlink contradicted quote or relevance associations, or vote answers for existing APX opinions by using quotes_recent_unverified, quotes_verify, opinion_statements_verify, opinions_statements_remove, and votes_verify MCP tools.
 allowed-tools:
   - web.search_query
   - web.open
   - web.find
 ---
 
-# YouCongress Verify Quotes
+# APX Verify Quotes
 
 ## Overview
 
-Verify existing YouCongress quote records end to end. Start from `quotes_recent_unverified`, then complete every pending verification on each returned record: quote authenticity, opinion-statement relevance, and vote answer. Every returned record has at least one pending verification, but its quote may already be `ai_verified`; quote-level `ai_verified` confirms authenticity only, not relevance links or votes. If an upstream record is already verified, do not repeat that specific check: treat it as passing and continue to every downstream relevance or vote check that is still unverified. Preserve statement associations when quote authenticity is `ai_unverifiable`; unlink them only when quote authenticity is contradicted or unverifiable in principle.
+Verify existing APX quote records end to end. Start from `quotes_recent_unverified`, then complete every pending verification on each returned record: quote authenticity, opinion-statement relevance, and vote answer. Every returned record has at least one pending verification, but its quote may already be `ai_verified`; quote-level `ai_verified` confirms authenticity only, not relevance links or votes. If an upstream record is already verified, do not repeat that specific check: treat it as passing and continue to every downstream relevance or vote check that is still unverified. Preserve statement associations when quote authenticity is `ai_unverifiable`; unlink them only when quote authenticity is contradicted or unverifiable in principle.
 
-If YouCongress MCP tools are not already loaded, use tool discovery for `quotes_recent_unverified`, `quotes_verify`, `opinion_statements_verify`, `opinions_statements_remove`, `votes_verify`, `opinions_statements_add`, and `opinions_show`.
+If APX MCP tools are not already loaded, use tool discovery for `quotes_recent_unverified`, `quotes_verify`, `opinion_statements_verify`, `opinions_statements_remove`, `votes_verify`, `opinions_statements_add`, and `opinions_show`.
 
 Run independent quote validations in parallel whenever the environment supports parallel tool calls or subagents. Preserve the dependency order inside each quote: quote authenticity gates relevance checks, and relevance gates vote checks.
 

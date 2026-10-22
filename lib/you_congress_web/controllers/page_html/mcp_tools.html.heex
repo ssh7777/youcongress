@@ -4,10 +4,10 @@ build_llms_txt/0 (page_controller.ex, served at /llms.txt), and vice versa. --%>
   <!-- Header Section -->
   <section aria-labelledby="mcp-heading">
     <h1 id="mcp-heading" class="py-6 text-xl font-bold text-center bg-blue-100 rounded-lg">
-      YouCongress MCP Tools
+      APX MCP Tools
     </h1>
     <p class="mt-6 text-lg leading-relaxed">
-      YouCongress exposes its data and functionality through the <strong>Model Context Protocol (MCP)</strong>, an open standard that lets AI assistants
+      APX exposes its data and functionality through the <strong>Model Context Protocol (MCP)</strong>, an open standard that lets AI assistants
       like ChatGPT and Claude interact directly with external services.
     </p>
   </section>
@@ -16,7 +16,7 @@ build_llms_txt/0 (page_controller.ex, served at /llms.txt), and vice versa. --%>
   <section class="mt-6 p-6 bg-indigo-50 rounded-lg border border-indigo-200">
     <h2 class="text-lg font-bold text-indigo-900">New to MCP? Pick your assistant.</h2>
     <p class="mt-2 text-indigo-800">
-      Follow a step-by-step guide to connect YouCongress to ChatGPT or Claude. Any other MCP-capable assistant can use the same endpoint below.
+      Follow a step-by-step guide to connect APX to ChatGPT or Claude. Any other MCP-capable assistant can use the same endpoint below.
     </p>
     <div class="mt-3 flex flex-wrap gap-3">
       <a
@@ -47,7 +47,7 @@ build_llms_txt/0 (page_controller.ex, served at /llms.txt), and vice versa. --%>
         <div>
           <h3 class="font-semibold text-lg">Option 1: Connect without an API Key</h3>
           <p class="text-gray-700 leading-relaxed">
-            The public YouCongress MCP endpoint works out of the box. No API key required. Just add it to your assistant and you're ready to browse public data.
+            The public APX MCP endpoint works out of the box. No API key required. Just add it to your assistant and you're ready to browse public data.
           </p>
           <div class="mt-2 flex items-center gap-2 rounded-lg bg-gray-100 border border-gray-200">
             <pre class="flex-1 text-sm overflow-x-auto m-0"><code id="mcp-tools-url-public" class="block px-3 py-2">https://apx-lake.vercel.app/mcp</code></pre>
@@ -84,7 +84,7 @@ build_llms_txt/0 (page_controller.ex, served at /llms.txt), and vice versa. --%>
         <div>
           <h3 class="font-semibold text-lg">Option 2: Use an API Key for personalized access</h3>
           <p class="text-gray-700 leading-relaxed">
-            Log in to YouCongress and go to <.link
+            Log in to APX and go to <.link
               href="/settings"
               class="underline text-blue-600 hover:text-blue-800"
             >
@@ -192,7 +192,7 @@ build_llms_txt/0 (page_controller.ex, served at /llms.txt), and vice versa. --%>
       <p class="text-gray-600 mt-2">
         Admins can trigger automatic quote discovery, but anyone can ask their own
         ChatGPT, Claude, Cursor, or other MCP-connected assistant to find sourced quotes and then
-        add them to YouCongress through the opinions and votes tools.
+        add them to APX through the opinions and votes tools.
       </p>
       <dl class="mt-3 space-y-3">
         <div class="pl-4">
@@ -384,7 +384,7 @@ build_llms_txt/0 (page_controller.ex, served at /llms.txt), and vice versa. --%>
         Quotes and opinions attributed to authors, linked to statements.
       </p>
       <p class="text-gray-600 mt-2">
-        Every "quote" in YouCongress is simply an opinion that includes a <code class="bg-gray-100 px-1 rounded">source_url</code>. User-authored
+        Every "quote" in APX is simply an opinion that includes a <code class="bg-gray-100 px-1 rounded">source_url</code>. User-authored
         positions without a source URL are still stored as opinions, but they will not appear in the
         quote verification tools below. Use the opinions tools to create both sourced quotes and
         unsourced user stances. Just include the
@@ -698,7 +698,7 @@ build_llms_txt/0 (page_controller.ex, served at /llms.txt), and vice versa. --%>
         or another MCP-capable assistant and try pasting one of these prompts:
       </:intro>
       <:permission_notice>
-        Your AI assistant will use the YouCongress tools automatically. The first time it tries to use a tool, it may ask for your permission. Just click <strong>Allow</strong>.
+        Your AI assistant will use the APX tools automatically. The first time it tries to use a tool, it may ask for your permission. Just click <strong>Allow</strong>.
       </:permission_notice>
     </.prompt_examples>
   </section>

@@ -7,7 +7,7 @@ defmodule YouCongressWeb.MagicLinkLive do
     ~H"""
     <div class="mx-auto mt-12 max-w-sm text-center">
       <.header>
-        Continue to YouCongress
+        Continue to APX
         <:subtitle>
           Use the button below to finish signing in. This link can only be used once.
         </:subtitle>

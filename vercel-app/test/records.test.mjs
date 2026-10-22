@@ -80,3 +80,12 @@ test('page-only CSV accurately describes its scope and source provenance', () =>
   assert.match(csv, /https:\/\/example.com/);
   assert.match(csv, /"'=1"/);
 });
+
+test('statement tallies default to zero and read recorded positions only', async () => {
+  const calls = [];
+  const repo = repository(async (...args) => {calls.push(args); return {rows: [{position: 'for', n: 3}, {position: 'against', n: 2}]}});
+  assert.deepEqual(await repo.statementTallies('7'), {for: 3, abstain: 0, against: 2});
+  assert.match(calls[0][0], /v\.position/);
+  assert.ok(!calls[0][0].includes('users'));
+  assert.deepEqual(calls[0][1], ['7']);
+});

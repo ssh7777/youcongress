@@ -3,7 +3,7 @@ defmodule YouCongress.Track do
   Track events with Amplitude
   """
 
-  alias YouCongress.{Amplitude, AnalyticsConsent}
+  alias APX.{Amplitude, AnalyticsConsent}
 
   def event(_, nil), do: nil
 

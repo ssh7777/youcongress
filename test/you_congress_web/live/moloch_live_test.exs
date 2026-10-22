@@ -19,7 +19,7 @@ defmodule YouCongressWeb.MolochLiveTest do
              [YouCongressWeb.Endpoint.url() <> "/moloch"]
 
     assert html =~ "Revealing agreement is not the same as solving a coordination problem."
-    assert html =~ "not commitment infrastructure that YouCongress offers today"
+    assert html =~ "not commitment infrastructure that APX offers today"
     assert length(Floki.find(document, "#proposals a[href^='/p/']")) == 4
     assert Floki.find(document, "button[data-copy-url='/moloch']") != []
     assert Floki.find(document, "footer a[href='/moloch']") != []

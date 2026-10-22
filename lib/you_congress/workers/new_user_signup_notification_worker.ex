@@ -1,6 +1,6 @@
 defmodule YouCongress.Workers.NewUserSignupNotificationWorker do
   @moduledoc """
-  Delivers the internal notification for a newly created YouCongress account.
+  Delivers the internal notification for a newly created APX account.
   """
 
   use Oban.Worker, queue: :mailers, max_attempts: 5

@@ -41,7 +41,7 @@ defmodule YouCongressWeb.ReconsiderLive.Show do
       |> assign(:page_image, url(~p"/images/social-reconsider-v2.png"))
       |> assign(
         :page_image_alt,
-        "Reconsider by YouCongress: measure how articles and videos change minds"
+        "Reconsider by APX: measure how articles and videos change minds"
       )
       |> assign(:page_image_width, 1200)
       |> assign(:page_image_height, 630)
@@ -229,7 +229,7 @@ defmodule YouCongressWeb.ReconsiderLive.Show do
   defp answer_classes(:abstain),
     do: "peer-checked:border-gray-600 peer-checked:bg-gray-100 peer-checked:text-gray-800"
 
-  defp author_name(author), do: author.name || author.twitter_username || "YouCongress author"
+  defp author_name(author), do: author.name || author.twitter_username || "APX author"
 
   defp content_label(%{content_type: :video}), do: "video"
   defp content_label(_), do: "article"
@@ -354,7 +354,7 @@ defmodule YouCongressWeb.ReconsiderLive.Show do
           id="reconsider-creator-attribution"
           class="mt-2 text-sm text-gray-500"
         >
-          Created on YouCongress by {author_name(@reconsideration.creator)}
+          Created on APX by {author_name(@reconsideration.creator)}
         </p>
         <%= if embed_url = youtube_embed_url(@reconsideration) do %>
           <div class="mx-auto mt-6 aspect-video max-w-xl overflow-hidden rounded-xl bg-black shadow-sm">
@@ -605,7 +605,7 @@ defmodule YouCongressWeb.ReconsiderLive.Show do
             </legend>
             <p class="mt-2 text-sm text-gray-600">
               Optional. These are global delegations. When you have not voted directly on an issue,
-              YouCongress follows the most common answer among your delegates. Your own votes always
+              APX follows the most common answer among your delegates. Your own votes always
               take priority.
             </p>
 

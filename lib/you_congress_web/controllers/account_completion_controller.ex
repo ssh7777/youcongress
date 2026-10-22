@@ -19,7 +19,7 @@ defmodule YouCongressWeb.AccountCompletionController do
     {:ok, _user} = Newsletters.subscribe_user(conn.assigns.current_user, "account_completion")
 
     conn
-    |> put_flash(:info, "You are subscribed to YouCongress updates.")
+    |> put_flash(:info, "You are subscribed to APX updates.")
     |> redirect(to: destination(conn, params))
   end
 
