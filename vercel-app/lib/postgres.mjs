@@ -1,6 +1,10 @@
+import {databaseUrl} from './database-url.mjs';
+
 export function postgresConfig(env = process.env) {
-  const connectionString = env.DATABASE_URL?.trim();
-  if (!connectionString) throw new Error('DATABASE_URL is required for PostgreSQL access.');
+  const connectionString = databaseUrl(env);
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is required for PostgreSQL access; PRISMA_DATABASE_URL and POSTGRES_URL are also accepted.');
+  }
 
   const url = new URL(connectionString);
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) {

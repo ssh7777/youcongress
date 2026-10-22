@@ -30,9 +30,11 @@ This guest model is not password authentication, email verification, administrat
 
 ```text
 APX_DATABASE_MODE=external
-DATABASE_URL=<sensitive pooled PostgreSQL URL>
+DATABASE_URL=<sensitive PostgreSQL URL>
 DATABASE_SSL=true
 ```
+
+Vercel’s Prisma Postgres integration can instead supply `PRISMA_DATABASE_URL` or `POSTGRES_URL`. APX checks `DATABASE_URL`, `PRISMA_DATABASE_URL`, then `POSTGRES_URL`, using the first non-empty value. This also allows an integration to recover an installation that has an empty manual `DATABASE_URL` placeholder.
 
 `npm run build` applies migrations and runs a rollback write probe before compiling. The probe writes every persistent table and tests an owner-scoped update, then rolls back. This verifies that production is genuinely writable without leaving test data behind.
 
