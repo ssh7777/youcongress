@@ -15,13 +15,13 @@ defmodule Mix.Tasks.Statements.BackfillSyntheses do
 
   On the Fly release (no Mix) run instead:
 
-      /app/bin/you_congress rpc 'YouCongress.Statements.Synthesis.backfill([])'
+      /app/bin/apx rpc 'APX.Statements.Synthesis.backfill([])'
   """
 
   use Mix.Task
 
-  alias YouCongress.FeatureFlags
-  alias YouCongress.Statements.Synthesis
+  alias APX.FeatureFlags
+  alias APX.Statements.Synthesis
 
   @shortdoc "Enqueues statement quote-synthesis generation via OpenAI"
 

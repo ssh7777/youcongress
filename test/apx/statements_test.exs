@@ -1,0 +1,169 @@
+defmodule APX.StatementsTest do
+  use APX.DataCase
+  use Oban.Testing, repo: APX.Repo
+
+  alias APX.Statements
+  import APX.AccountsFixtures
+
+  describe "update_synthesis/2" do
+    import APX.StatementsFixtures
+
+    test "persists the synthesis fields without touching title or slug" do
+      statement = statement_fixture()
+
+      assert {:ok, updated} =
+               Statements.update_synthesis(statement, %{
+                 synthesis: %{"headline" => "H", "conclusion" => "C"},
+                 synthesis_generated_at: ~U[2026-07-04 10:00:00Z],
+                 synthesis_quotes_count: 30
+               })
+
+      assert updated.synthesis == %{"headline" => "H", "conclusion" => "C"}
+      assert updated.synthesis_generated_at == ~U[2026-07-04 10:00:00Z]
+      assert updated.synthesis_quotes_count == 30
+      assert updated.title == statement.title
+      assert updated.slug == statement.slug
+
+      reloaded = Statements.get_statement!(statement.id)
+      assert reloaded.synthesis["headline"] == "H"
+    end
+  end
+
+  describe "statements" do
+    alias APX.Statements.Statement
+
+    import APX.StatementsFixtures
+
+    @invalid_attrs %{title: nil}
+
+    test "list_statements/0 returns all statements" do
+      statement = statement_fixture()
+      assert Statements.list_statements() == [statement]
+    end
+
+    test "get_statement!/1 returns the statement with given id" do
+      statement = statement_fixture()
+      assert Statements.get_statement!(statement.id) == statement
+    end
+
+    test "create_statement/1 with valid data creates a statement" do
+      valid_attrs = %{title: "some title"}
+
+      assert {:ok, %Statement{} = statement} = Statements.create_statement(valid_attrs)
+      assert statement.title == "some title"
+    end
+
+    test "create_statement/1 with invalid data returns error changeset" do
+      assert {:error, %Ecto.Changeset{}} = Statements.create_statement(@invalid_attrs)
+    end
+
+    test "statement URLs are optional, trimmed, persisted, and clearable" do
+      statement = statement_fixture()
+      assert is_nil(statement.url)
+
+      for url <- ["https://ai-2040.com/", "http://example.com/plan?year=2040#details"] do
+        assert {:ok, updated} = Statements.update_statement(statement, %{url: "  #{url}  "})
+        assert Statements.get_statement!(statement.id).url == url
+
+        for blank <- ["", "   ", nil] do
+          assert {:ok, cleared} = Statements.update_statement(updated, %{url: blank})
+          assert is_nil(cleared.url)
+          assert is_nil(Statements.get_statement!(statement.id).url)
+        end
+      end
+    end
+
+    test "rejects URLs without an HTTP or HTTPS scheme and host" do
+      statement = statement_fixture()
+
+      for url <- [
+            "javascript:alert(1)",
+            "ftp://example.com/",
+            "//example.com/",
+            "example.com",
+            "https://",
+            "https:///plan",
+            "https://example .com/"
+          ] do
+        assert {:error, changeset} = Statements.update_statement(statement, %{url: url})
+        assert "must be a valid HTTP or HTTPS URL" in errors_on(changeset).url
+      end
+
+      assert is_nil(Statements.get_statement!(statement.id).url)
+    end
+
+    test "create_statement/1 does not enqueue a quote job automatically" do
+      user = admin_fixture()
+
+      Oban.Testing.with_testing_mode(:manual, fn ->
+        assert {:ok, %Statement{} = _statement} =
+                 Statements.create_statement(%{title: "Auto quote me", user_id: user.id})
+
+        refute_enqueued(worker: APX.Workers.QuotatorWorker)
+      end)
+    end
+
+    test "update_statement/2 with valid data updates the statement" do
+      statement = statement_fixture()
+      update_attrs = %{title: "some updated title"}
+
+      assert {:ok, %Statement{} = statement} =
+               Statements.update_statement(statement, update_attrs)
+
+      assert statement.title == "some updated title"
+    end
+
+    test "update_statement/2 with invalid data returns error changeset" do
+      statement = statement_fixture()
+      assert {:error, %Ecto.Changeset{}} = Statements.update_statement(statement, @invalid_attrs)
+      assert statement == Statements.get_statement!(statement.id)
+    end
+
+    test "delete_statement/1 deletes the statement" do
+      statement = statement_fixture()
+      assert {:ok, %Statement{}} = Statements.delete_statement(statement)
+      assert_raise Ecto.NoResultsError, fn -> Statements.get_statement!(statement.id) end
+    end
+
+    test "change_statement/1 returns a statement changeset" do
+      statement = statement_fixture()
+      assert %Ecto.Changeset{} = Statements.change_statement(statement)
+    end
+
+    test "create_statement/1 uses provided slug when it doesn't exist" do
+      assert {:ok, %Statement{} = statement} =
+               Statements.create_statement(%{title: "Build a CERN for AI", slug: "build-cern-ai"})
+
+      assert statement.slug == "build-cern-ai"
+    end
+
+    test "create_statement/1 appends number to slug when it already exists" do
+      statement_fixture(%{title: "First statement", slug: "build-cern-ai"})
+
+      assert {:ok, %Statement{} = statement} =
+               Statements.create_statement(%{title: "Build a CERN for AI", slug: "build-cern-ai"})
+
+      assert statement.slug == "build-cern-ai2"
+    end
+
+    test "create_statement/1 increments slug number until unique" do
+      statement_fixture(%{title: "First", slug: "my-slug"})
+      statement_fixture(%{title: "Second", slug: "my-slug2"})
+      statement_fixture(%{title: "Third", slug: "my-slug3"})
+
+      assert {:ok, %Statement{} = statement} =
+               Statements.create_statement(%{title: "Fourth", slug: "my-slug"})
+
+      assert statement.slug == "my-slug4"
+    end
+
+    test "update_statement/2 preserves existing slug when slug is not changed" do
+      statement = statement_fixture(%{slug: "original-slug"})
+
+      assert {:ok, %Statement{} = updated} =
+               Statements.update_statement(statement, %{title: "Updated title"})
+
+      assert updated.slug == "original-slug"
+    end
+  end
+end

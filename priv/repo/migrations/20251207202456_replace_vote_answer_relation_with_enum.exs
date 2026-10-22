@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.ReplaceVoteAnswerRelationWithEnum do
+defmodule APX.Repo.Migrations.ReplaceVoteAnswerRelationWithEnum do
   use Ecto.Migration
 
   import Ecto.Query

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddWikidataToAuthors do
+defmodule APX.Repo.Migrations.AddWikidataToAuthors do
   use Ecto.Migration
 
   def change do

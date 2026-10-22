@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateApiKeys do
+defmodule APX.Repo.Migrations.CreateApiKeys do
   use Ecto.Migration
 
   def change do

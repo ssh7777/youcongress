@@ -9,7 +9,7 @@ defmodule Mix.Tasks.Opinions.BackfillEmbeddings do
 
   use Mix.Task
 
-  alias YouCongress.Workers.BackfillOpinionEmbeddingWorker
+  alias APX.Workers.BackfillOpinionEmbeddingWorker
 
   @shortdoc "Enqueues sourced quote embedding backfill jobs"
 

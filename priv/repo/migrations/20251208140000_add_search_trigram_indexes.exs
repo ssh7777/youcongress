@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddSearchTrigramIndexes do
+defmodule APX.Repo.Migrations.AddSearchTrigramIndexes do
   use Ecto.Migration
 
   def up do

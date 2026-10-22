@@ -1,4 +1,4 @@
-defmodule YouCongress.CountriesFixtures do
+defmodule APX.CountriesFixtures do
   @moduledoc """
   This module defines test helpers for creating countries.
   """
@@ -12,7 +12,7 @@ defmodule YouCongress.CountriesFixtures do
         phone_prefix: "+#{unique}"
       })
 
-    {:ok, country} = YouCongress.Countries.create_country(attrs)
+    {:ok, country} = APX.Countries.create_country(attrs)
 
     country
   end

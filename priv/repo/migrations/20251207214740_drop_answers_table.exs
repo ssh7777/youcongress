@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.DropAnswersTable do
+defmodule APX.Repo.Migrations.DropAnswersTable do
   use Ecto.Migration
 
   def up do

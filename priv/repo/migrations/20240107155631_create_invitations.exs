@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateInvitations do
+defmodule APX.Repo.Migrations.CreateInvitations do
   use Ecto.Migration
 
   def change do

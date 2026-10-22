@@ -1,0 +1,156 @@
+defmodule APXWeb.MCPServer.QuotesListTest do
+  use APX.DataCase, async: false
+
+  import Mock
+  import APX.AuthorsFixtures
+  import APX.OpinionsFixtures
+  import APX.StatementsFixtures
+  import APX.VotesFixtures
+
+  alias APXWeb.MCPServer.QuotesList
+
+  describe "execute/2" do
+    test "lists quotes newest first with author and vote data" do
+      author = author_fixture(name: "Ada Lovelace", bio: "Mathematician")
+
+      q1 =
+        opinion_fixture(
+          author_id: author.id,
+          content: "Quote one",
+          source_url: "https://example.com/1",
+          date: ~D[2020-01-01],
+          date_precision: :year
+        )
+
+      q2 = opinion_fixture(content: "Quote two", source_url: "https://example.com/2")
+
+      # Opinions without a source_url are not quotes
+      _not_a_quote = opinion_fixture(source_url: nil)
+
+      statement = statement_fixture()
+
+      vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: author.id,
+          opinion_id: q1.id,
+          answer: :for
+        })
+
+      with_mocked_response(fn ->
+        assert {:reply, {:json, %{quotes: payload, last_id: last_id}}, :frame} =
+                 QuotesList.execute(%{}, :frame)
+
+        assert Enum.map(payload, & &1.opinion_id) == [q2.id, q1.id]
+        assert last_id == q1.id
+
+        q1_payload = Enum.find(payload, &(&1.opinion_id == q1.id))
+        assert q1_payload.quote == "Quote one"
+        assert q1_payload.author == "Ada Lovelace"
+        assert q1_payload.author_biography == "Mathematician"
+        assert q1_payload.source_url == "https://example.com/1"
+        assert q1_payload.date == "2020-01-01"
+        assert q1_payload.date_precision == "year"
+        assert q1_payload.verification_status == :unverified
+        assert q1_payload.vote_id == vote.id
+        assert q1_payload.vote_answer == :for
+
+        q2_payload = Enum.find(payload, &(&1.opinion_id == q2.id))
+        assert q2_payload.vote_id == nil
+        assert q2_payload.vote_answer == nil
+      end)
+    end
+
+    test "lists quotes in ascending order and paginates with last_id" do
+      q1 = opinion_fixture(content: "One")
+      q2 = opinion_fixture(content: "Two")
+      q3 = opinion_fixture(content: "Three")
+
+      with_mocked_response(fn ->
+        assert {:reply, {:json, %{quotes: payload, last_id: last_id}}, :frame} =
+                 QuotesList.execute(%{order: "asc"}, :frame)
+
+        assert Enum.map(payload, & &1.opinion_id) == [q1.id, q2.id, q3.id]
+        assert last_id == q3.id
+
+        assert {:reply, {:json, %{quotes: next_page}}, :frame} =
+                 QuotesList.execute(%{order: "asc", last_id: q1.id}, :frame)
+
+        assert Enum.map(next_page, & &1.opinion_id) == [q2.id, q3.id]
+      end)
+    end
+
+    test "paginates with last_id in descending order" do
+      q1 = opinion_fixture(content: "One")
+      q2 = opinion_fixture(content: "Two")
+      q3 = opinion_fixture(content: "Three")
+
+      with_mocked_response(fn ->
+        assert {:reply, {:json, %{quotes: payload}}, :frame} =
+                 QuotesList.execute(%{last_id: q3.id}, :frame)
+
+        assert Enum.map(payload, & &1.opinion_id) == [q2.id, q1.id]
+      end)
+    end
+
+    test "orders by quote date descending and paginates in that order" do
+      oldest = opinion_fixture(content: "Oldest", date: ~D[2020-01-01])
+      newest = opinion_fixture(content: "Newest", date: ~D[2025-01-01])
+      middle = opinion_fixture(content: "Middle", date: ~D[2023-01-01])
+      undated = opinion_fixture(content: "Undated")
+
+      with_mocked_response(fn ->
+        assert {:reply, {:json, %{quotes: payload}}, :frame} =
+                 QuotesList.execute(%{order_by: "date"}, :frame)
+
+        assert Enum.map(payload, & &1.opinion_id) == [newest.id, middle.id, oldest.id, undated.id]
+
+        assert {:reply, {:json, %{quotes: next_page}}, :frame} =
+                 QuotesList.execute(%{order_by: "date", last_id: middle.id}, :frame)
+
+        assert Enum.map(next_page, & &1.opinion_id) == [oldest.id, undated.id]
+      end)
+    end
+
+    test "orders by quote date ascending and paginates in that order" do
+      oldest = opinion_fixture(content: "Oldest", date: ~D[2020-01-01])
+      newest = opinion_fixture(content: "Newest", date: ~D[2025-01-01])
+      middle = opinion_fixture(content: "Middle", date: ~D[2023-01-01])
+      undated = opinion_fixture(content: "Undated")
+
+      with_mocked_response(fn ->
+        params = %{order_by: "date", order: "asc"}
+
+        assert {:reply, {:json, %{quotes: payload}}, :frame} =
+                 QuotesList.execute(params, :frame)
+
+        assert Enum.map(payload, & &1.opinion_id) == [oldest.id, middle.id, newest.id, undated.id]
+
+        assert {:reply, {:json, %{quotes: next_page}}, :frame} =
+                 QuotesList.execute(Map.put(params, :last_id, middle.id), :frame)
+
+        assert Enum.map(next_page, & &1.opinion_id) == [newest.id, undated.id]
+      end)
+    end
+
+    test "returns nil last_id when there are no quotes" do
+      with_mocked_response(fn ->
+        assert {:reply, {:json, %{quotes: [], last_id: nil}}, :frame} =
+                 QuotesList.execute(%{}, :frame)
+      end)
+    end
+  end
+
+  defp with_mocked_response(fun) do
+    with_mocks([
+      {Anubis.Server.Response, [],
+       [
+         tool: fn -> :tool end,
+         json: fn :tool, data -> {:json, data} end,
+         error: fn :tool, message -> {:error, message} end
+       ]}
+    ]) do
+      fun.()
+    end
+  end
+end

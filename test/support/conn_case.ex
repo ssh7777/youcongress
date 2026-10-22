@@ -1,4 +1,4 @@
-defmodule YouCongressWeb.ConnCase do
+defmodule APXWeb.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -11,7 +11,7 @@ defmodule YouCongressWeb.ConnCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use YouCongressWeb.ConnCase, async: true`, although
+  by setting `use APXWeb.ConnCase, async: true`, although
   this option is not recommended for other databases.
   """
 
@@ -20,19 +20,19 @@ defmodule YouCongressWeb.ConnCase do
   using do
     quote do
       # The default endpoint for testing
-      @endpoint YouCongressWeb.Endpoint
+      @endpoint APXWeb.Endpoint
 
-      use YouCongressWeb, :verified_routes
+      use APXWeb, :verified_routes
 
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
-      import YouCongressWeb.ConnCase
+      import APXWeb.ConnCase
     end
   end
 
   setup tags do
-    YouCongress.DataCase.setup_sandbox(tags)
+    APX.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 
@@ -45,7 +45,7 @@ defmodule YouCongressWeb.ConnCase do
   test context.
   """
   def register_and_log_in_user(%{conn: conn}) do
-    user = YouCongress.AccountsFixtures.user_fixture()
+    user = APX.AccountsFixtures.user_fixture()
     %{conn: log_in_user(conn, user), current_user: user}
   end
 
@@ -58,7 +58,7 @@ defmodule YouCongressWeb.ConnCase do
   test context.
   """
   def register_and_log_in_admin(%{conn: conn}) do
-    user = YouCongress.AccountsFixtures.admin_fixture()
+    user = APX.AccountsFixtures.admin_fixture()
     %{conn: log_in_user(conn, user), current_user: user}
   end
 
@@ -68,7 +68,7 @@ defmodule YouCongressWeb.ConnCase do
   It returns an updated `conn`.
   """
   def log_in_user(conn, user) do
-    token = YouCongress.Accounts.generate_user_session_token(user)
+    token = APX.Accounts.generate_user_session_token(user)
 
     conn
     |> Phoenix.ConnTest.init_test_session(%{})
@@ -83,8 +83,8 @@ defmodule YouCongressWeb.ConnCase do
 
   def log_in_as(conn, role) do
     {:ok, user} =
-      YouCongress.AccountsFixtures.user_fixture()
-      |> YouCongress.Accounts.update_role(role)
+      APX.AccountsFixtures.user_fixture()
+      |> APX.Accounts.update_role(role)
 
     log_in_user(conn, user)
   end

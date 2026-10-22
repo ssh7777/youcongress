@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.MakeVerificationCommentsNullable do
+defmodule APX.Repo.Migrations.MakeVerificationCommentsNullable do
   use Ecto.Migration
 
   def change do

@@ -1,10 +1,10 @@
-defmodule YouCongress.DelegationsFixtures do
+defmodule APX.DelegationsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `YouCongress.Delegations` context.
+  entities via the `APX.Delegations` context.
   """
 
-  alias YouCongress.AuthorsFixtures
+  alias APX.AuthorsFixtures
 
   @doc """
   Generate a delegation.
@@ -16,7 +16,7 @@ defmodule YouCongress.DelegationsFixtures do
         delegate_id: AuthorsFixtures.author_fixture().id,
         deleguee_id: AuthorsFixtures.author_fixture().id
       })
-      |> YouCongress.Delegations.create_delegation()
+      |> APX.Delegations.create_delegation()
 
     delegation
   end

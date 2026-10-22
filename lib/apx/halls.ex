@@ -1,0 +1,440 @@
+defmodule APX.Halls do
+  @moduledoc """
+  The Halls context.
+  """
+
+  import Ecto.Query, warn: false
+  alias APX.Repo
+
+  alias APX.Halls.Hall
+
+  @minimum_opinions_by_hall %{
+    "covid-19-origins" => 0,
+    "eggs-and-health" => 0
+  }
+
+  @doc """
+  Returns the minimum sourced-opinion count required for a hall feed.
+  """
+  def minimum_opinions_for(hall_name, default) do
+    Map.get(@minimum_opinions_by_hall, hall_name, default)
+  end
+
+  @doc """
+  Returns the list of halls.
+
+  ## Examples
+
+      iex> list_halls()
+      [%Hall{}, ...]
+
+  """
+  def list_halls(opts \\ []) do
+    opts
+    |> build_list_query()
+    |> Repo.all()
+  end
+
+  def count(opts \\ []) do
+    opts
+    |> build_list_query()
+    |> exclude(:order_by)
+    |> exclude(:limit)
+    |> exclude(:offset)
+    |> Repo.aggregate(:count, :id)
+  end
+
+  @doc """
+  Gets a single hall.
+
+  Raises `Ecto.NoResultsError` if the Hall does not exist.
+
+  ## Examples
+
+      iex> get_hall!(123)
+      %Hall{}
+
+      iex> get_hall!(456)
+      ** (Ecto.NoResultsError)
+
+  """
+  def get_hall!(id), do: Repo.get!(Hall, id)
+
+  @doc """
+  Fetches a hall by its name
+
+  ## Examples
+      iex> get_by_name("Somename")
+      %Hall{name: "Somename"}
+
+      iex> get_by_name("NonExistentname")
+      nil
+  """
+  @spec get_by_name(binary) :: Hall.t() | nil
+  def get_by_name(name) do
+    Repo.get_by(Hall, name: name)
+  end
+
+  @spec get_by_name(binary, list) :: Hall.t() | nil
+  def get_by_name(name, preload: tables) do
+    hall = Repo.get_by(Hall, name: name)
+    hall && Repo.preload(hall, tables)
+  end
+
+  @doc """
+  Gets a hall by its name. If it doesn't exist, creates a new hall with the given name.
+
+  ## Examples
+
+      iex> get_or_create_by_name("Somename")
+      {:ok, %Hall{name: "Somename"}}
+
+      iex> get_or_create_by_name("Existingname")
+      {:ok, %Hall{name: "Existingname"}}
+
+  """
+  @spec get_or_create_by_name(binary) :: {:ok, Hall.t()} | {:error, Ecto.Changeset.t()}
+  def get_or_create_by_name(name) when is_binary(name) do
+    case get_by_name(name) do
+      nil -> create_hall(%{name: name})
+      hall -> {:ok, hall}
+    end
+  end
+
+  def list_or_create_by_names(names) do
+    halls = Enum.map(names, &get_or_create_by_name/1)
+
+    if Enum.all?(halls, &(elem(&1, 0) == :ok)) do
+      {:ok, Enum.map(halls, &elem(&1, 1))}
+    else
+      :error
+    end
+  end
+
+  @doc """
+  Gets a list of halls by their names.
+
+  ## Examples
+
+      iex> get_halls_by_names(["hall1", "hall2"])
+      [%Hall{name: "hall1"}, %Hall{name: "hall2"}]
+  """
+  @spec get_halls_by_names([binary()]) :: [Hall.t()]
+  def get_halls_by_names(names) when is_list(names) do
+    Repo.all(from h in Hall, where: h.name in ^names)
+  end
+
+  def get_halls_by_names(_), do: []
+
+  @doc """
+  Creates a hall.
+
+  ## Examples
+
+      iex> create_hall(%{field: value})
+      {:ok, %Hall{}}
+
+      iex> create_hall(%{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def create_hall(attrs \\ %{}) do
+    %Hall{}
+    |> Hall.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a hall.
+
+  ## Examples
+
+      iex> update_hall(hall, %{field: new_value})
+      {:ok, %Hall{}}
+
+      iex> update_hall(hall, %{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def update_hall(%Hall{} = hall, attrs) do
+    hall
+    |> Hall.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a hall.
+
+  ## Examples
+
+      iex> delete_hall(hall)
+      {:ok, %Hall{}}
+
+      iex> delete_hall(hall)
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def delete_hall(%Hall{} = hall) do
+    Repo.delete(hall)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking hall changes.
+
+  ## Examples
+
+      iex> change_hall(hall)
+      %Ecto.Changeset{data: %Hall{}}
+
+  """
+  def change_hall(%Hall{} = hall, attrs \\ %{}) do
+    Hall.changeset(hall, attrs)
+  end
+
+  def classify(text, model \\ :"gpt-5-nano") do
+    classifier_impl().classify(text, model)
+  end
+
+  def classify!(text, model \\ :"gpt-5-nano") do
+    {:ok, %{main_tag: main_tag, other_tags: other_tags}} = classifier_impl().classify(text, model)
+    %{main_tag: main_tag, other_tags: other_tags}
+  end
+
+  @doc """
+  Returns halls that have pending quotes (unverified quotes with source URLs).
+  Returns a list of maps with :name and :quote_count keys.
+  """
+  def list_halls_with_pending_quotes do
+    import Ecto.Query, warn: false
+
+    from(h in Hall,
+      join: hv in "halls_statements",
+      on: hv.hall_id == h.id,
+      join: v in "statements",
+      on: hv.statement_id == v.id,
+      join: ov in "opinions_statements",
+      on: ov.statement_id == v.id,
+      join: o in "opinions",
+      on: ov.opinion_id == o.id,
+      where:
+        not (is_nil(o.source_url) and is_nil(o.source_text)) and is_nil(o.verification_status),
+      group_by: [h.id, h.name],
+      select: %{name: h.name, quote_count: count(o.id, :distinct)},
+      order_by: h.name
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Stats for a hall's topic-hub page: statement and sourced-quote counts,
+  plus top authors by quote count.
+
+  Returns nil if the hall doesn't exist.
+  """
+  def hall_stats(hall_name) do
+    case get_by_name(hall_name) do
+      nil -> nil
+      hall -> build_hall_stats(hall)
+    end
+  end
+
+  @doc """
+  Returns the most-quoted authors in any of the named halls.
+
+  Authors are ranked with the same sourced-quote criteria used by a hall's
+  `top_authors`, with an optional list of author IDs to exclude.
+  """
+  def list_top_authors_for_halls(hall_names, opts \\ []) do
+    hall_names = hall_names |> Enum.reject(&(&1 == "all")) |> Enum.uniq()
+    excluded_author_ids = Keyword.get(opts, :exclude_author_ids, [])
+    limit = Keyword.get(opts, :limit, 6)
+
+    if hall_names == [] do
+      []
+    else
+      query =
+        from o in APX.Opinions.Opinion,
+          join: opinion_statement in "opinions_statements",
+          on: opinion_statement.opinion_id == o.id,
+          join: hall_statement in "halls_statements",
+          on: hall_statement.statement_id == opinion_statement.statement_id,
+          join: hall in Hall,
+          on: hall.id == hall_statement.hall_id,
+          join: author in APX.Authors.Author,
+          as: :author,
+          on: author.id == o.author_id,
+          left_join: country in assoc(author, :country),
+          where: hall.name in ^hall_names,
+          where: not (is_nil(o.source_url) and is_nil(o.source_text)) and o.twin == false,
+          where: not is_nil(author.name),
+          where: fragment("length(?)", author.name) <= 25,
+          where: hall.name != "congreso-es" or country.name == "Spain",
+          group_by: author.id,
+          order_by: [desc: count(o.id, :distinct), asc: author.name],
+          limit: ^limit,
+          select: author
+
+      query =
+        if excluded_author_ids == [] do
+          query
+        else
+          where(query, [author: author], author.id not in ^excluded_author_ids)
+        end
+
+      Repo.all(query)
+    end
+  end
+
+  @doc """
+  Stats across all statements, without filtering through a hall.
+
+  The headline `quote_count` and `statement_count` mirror the full dataset
+  export: only statements with enough verified quotes count, and disputed
+  quotes and quotes not linked to any statement are excluded. `top_authors`
+  keeps the broader sourced-quote ranking.
+  """
+  def all_stats do
+    statements =
+      Repo.all(
+        from s in APX.Statements.Statement,
+          select: %{id: s.id, slug: s.slug, title: s.title}
+      )
+
+    quotes_query =
+      from o in APX.Opinions.Opinion,
+        where: not (is_nil(o.source_url) and is_nil(o.source_text)) and o.twin == false
+
+    %Hall{name: "all"}
+    |> build_stats(statements, quotes_query)
+    |> Map.merge(APX.Statements.QuotesCsv.dataset_counts())
+  end
+
+  defp build_hall_stats(hall) do
+    statements =
+      Repo.all(
+        from s in APX.Statements.Statement,
+          join: hs in "halls_statements",
+          on: hs.statement_id == s.id,
+          where: hs.hall_id == ^hall.id,
+          select: %{id: s.id, slug: s.slug, title: s.title}
+      )
+
+    statement_ids = Enum.map(statements, & &1.id)
+
+    quotes_query =
+      from o in APX.Opinions.Opinion,
+        join: os in "opinions_statements",
+        on: os.opinion_id == o.id,
+        where: os.statement_id in ^statement_ids,
+        where: not (is_nil(o.source_url) and is_nil(o.source_text)) and o.twin == false
+
+    build_stats(hall, statements, quotes_query)
+  end
+
+  defp build_stats(hall, statements, quotes_query) do
+    statement_ids = Enum.map(statements, & &1.id)
+
+    quote_count = Repo.one(from o in quotes_query, select: count(o.id, :distinct))
+
+    top_authors_query =
+      from o in quotes_query,
+        join: a in APX.Authors.Author,
+        on: a.id == o.author_id,
+        where: not is_nil(a.name),
+        where: fragment("length(?)", a.name) <= 25,
+        group_by: a.id,
+        order_by: [desc: count(o.id, :distinct), asc: a.name],
+        limit: 6,
+        select: a
+
+    top_authors_query =
+      if hall.name == "congreso-es" do
+        from [_o, _opinion_statement, a] in top_authors_query,
+          join: country in assoc(a, :country),
+          where: country.name == "Spain"
+      else
+        top_authors_query
+      end
+
+    top_authors = Repo.all(top_authors_query)
+
+    %{
+      hall: hall,
+      statements: statements,
+      statement_count: length(statement_ids),
+      quote_count: quote_count,
+      top_authors: top_authors
+    }
+  end
+
+  @doc """
+  Returns halls that have at least one statement, excluding the virtual
+  "all" hall. Used for the sitemap and llms.txt.
+  """
+  def list_halls_with_statements do
+    from(h in Hall,
+      join: hs in "halls_statements",
+      on: hs.hall_id == h.id,
+      where: h.name != "all",
+      group_by: h.id,
+      order_by: h.name
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Halls with statements plus their sourced-quote count, most-quoted
+  first. Used for llms.txt.
+  """
+  def list_halls_with_quote_counts do
+    from(h in Hall,
+      join: hs in "halls_statements",
+      on: hs.hall_id == h.id,
+      left_join: os in "opinions_statements",
+      on: os.statement_id == hs.statement_id,
+      left_join: o in APX.Opinions.Opinion,
+      on:
+        os.opinion_id == o.id and not (is_nil(o.source_url) and is_nil(o.source_text)) and
+          o.twin == false,
+      where: h.name != "all",
+      group_by: h.id,
+      order_by: [desc: count(o.id, :distinct), asc: h.name],
+      select: {h, count(o.id, :distinct)}
+    )
+    |> Repo.all()
+  end
+
+  defp classifier_impl do
+    Application.get_env(:apx, :hall_classifier, APX.Halls.Classification)
+  end
+
+  defp build_list_query(opts) do
+    base_query = from(h in Hall)
+
+    Enum.reduce(opts, base_query, fn
+      {:name_contains, txt}, query ->
+        txt = String.replace(txt, " ", "-")
+        from h in query, where: ilike(h.name, ^"%#{txt}%")
+
+      {:search, search}, query ->
+        terms = APX.SearchParser.parse(search)
+
+        Enum.reduce(terms, query, fn term, query_acc ->
+          term_slug = String.replace(term, " ", "-")
+          from h in query_acc, where: ilike(h.name, ^"%#{term_slug}%")
+        end)
+
+      {:order_by, order_by}, query ->
+        order_by(query, ^order_by)
+
+      {:limit, limit}, query ->
+        limit(query, ^limit)
+
+      {:offset, offset}, query ->
+        offset(query, ^offset)
+
+      _, query ->
+        query
+    end)
+  end
+end

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RenameConfirmedAtToEmailConfirmedAt do
+defmodule APX.Repo.Migrations.RenameConfirmedAtToEmailConfirmedAt do
   use Ecto.Migration
 
   def change do

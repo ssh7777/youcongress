@@ -1,8 +1,8 @@
-defmodule YouCongress.Repo.Migrations.PopulateOpinionsVotingId do
+defmodule APX.Repo.Migrations.PopulateOpinionsVotingId do
   use Ecto.Migration
 
-  alias YouCongress.Opinions
-  alias YouCongress.Votes
+  alias APX.Opinions
+  alias APX.Votes
 
   def up do
     # Enum.each(Opinions.list_opinions(), fn opinion ->

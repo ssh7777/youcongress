@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.HashApiKeys do
+defmodule APX.Repo.Migrations.HashApiKeys do
   use Ecto.Migration
 
   def up do

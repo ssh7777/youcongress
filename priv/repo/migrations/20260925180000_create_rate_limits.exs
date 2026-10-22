@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateRateLimits do
+defmodule APX.Repo.Migrations.CreateRateLimits do
   use Ecto.Migration
 
   def change do

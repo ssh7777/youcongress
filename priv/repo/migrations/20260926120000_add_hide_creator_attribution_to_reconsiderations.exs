@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddHideCreatorAttributionToReconsiderations do
+defmodule APX.Repo.Migrations.AddHideCreatorAttributionToReconsiderations do
   use Ecto.Migration
 
   def change do

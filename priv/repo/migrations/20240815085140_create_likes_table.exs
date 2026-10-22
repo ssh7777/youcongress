@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateLikesTable do
+defmodule APX.Repo.Migrations.CreateLikesTable do
   use Ecto.Migration
 
   def change do

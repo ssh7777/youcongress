@@ -1,0 +1,366 @@
+defmodule APXWeb.LatestLiveTest do
+  use APXWeb.ConnCase, async: false
+
+  import Ecto.Query
+  import Phoenix.LiveViewTest
+  import APX.AccountsFixtures
+  import APX.AuthorsFixtures
+  import APX.OpinionsFixtures
+  import APX.StatementsFixtures
+  import APX.VotesFixtures
+  import APXWeb.ConnCase
+
+  alias APX.Opinions
+  alias APX.Accounts
+  alias APX.Opinions.Opinion
+  alias APX.OpinionsStatements.OpinionStatement
+  alias APX.Repo
+
+  defp add_opinion(statement, author, attrs) do
+    opinion =
+      attrs
+      |> Keyword.put(:author_id, author.id)
+      |> Keyword.put(:verification_status, :ai_verified)
+      |> opinion_fixture()
+
+    {:ok, _} = Opinions.add_opinion_to_statement(opinion, statement.id)
+
+    from(os in OpinionStatement,
+      where: os.opinion_id == ^opinion.id and os.statement_id == ^statement.id
+    )
+    |> Repo.update_all(set: [verification_status: :ai_verified])
+
+    vote_fixture(
+      Map.merge(
+        %{
+          statement_id: statement.id,
+          author_id: author.id,
+          opinion_id: opinion.id,
+          verification_status: :ai_verified
+        },
+        Map.new(attrs)
+      )
+    )
+  end
+
+  describe "new page" do
+    test "renders the feed of newest opinions", %{conn: conn} do
+      statement = statement_fixture(title: "AI Safety Statement")
+      author = author_fixture(%{name: "Ada Lovelace"})
+
+      add_opinion(statement, author,
+        content: "A very recent opinion",
+        answer: :for,
+        date: ~D[2026-01-01],
+        date_precision: :day
+      )
+
+      {:ok, view, html} = live(conn, ~p"/")
+
+      assert html =~ "new in AI governance, safety, jobs and society"
+      assert html =~ "AI Safety Statement"
+      assert html =~ "A very recent opinion"
+      assert html =~ "Ada Lovelace"
+      assert html =~ ~s(href="/subscribe")
+      assert html =~ "Subscribe to news"
+      assert html =~ "Want to see how articles and videos change minds?"
+      assert html =~ ~s(href="/reconsider")
+      assert html =~ "Check out Reconsider."
+      assert has_element?(view, "#latest-date-group-0 span.text-gray-600", "1")
+
+      assert html =~
+               ~r{href="/explore"[^>]*>Explore</a>,\s*<a[^>]*href="/explore"[^>]*>search</a>}
+
+      assert html =~ ~r{href="/dataset"[^>]*>download</a>}
+      assert html =~ "Pope Leo XIV</a>, and others."
+      refute html =~ ">more</a>"
+    end
+
+    test "hides the subscription link for a logged-in subscriber", %{conn: conn} do
+      user = user_fixture()
+      {:ok, user} = Accounts.welcome_update(user, %{newsletter: true})
+
+      {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/")
+
+      refute has_element?(view, ~s(a[href="/subscribe"]), "Subscribe to news")
+    end
+
+    test "shows the subscription link for a logged-in non-subscriber", %{conn: conn} do
+      user = user_fixture()
+
+      {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/")
+
+      assert has_element?(view, ~s(a[href="/subscribe"]), "Subscribe to news")
+    end
+
+    test "shows only the newest opinion per statement, not one per answer", %{conn: conn} do
+      statement = statement_fixture(title: "One Opinion Statement")
+      for_author = author_fixture()
+      against_author = author_fixture()
+      newest_author = author_fixture()
+
+      add_opinion(statement, for_author,
+        content: "Older for opinion",
+        answer: :for,
+        date: ~D[2024-01-01],
+        date_precision: :day
+      )
+
+      add_opinion(statement, against_author,
+        content: "Older against opinion",
+        answer: :against,
+        date: ~D[2024-02-01],
+        date_precision: :day
+      )
+
+      add_opinion(statement, newest_author,
+        content: "Newest abstain opinion",
+        answer: :abstain,
+        date: ~D[2026-01-01],
+        date_precision: :day
+      )
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ "Newest abstain opinion"
+      refute html =~ "Older for opinion"
+      refute html =~ "Older against opinion"
+    end
+
+    test "shows a quote only once when it is linked to multiple statements", %{conn: conn} do
+      first_statement = statement_fixture(title: "First linked statement")
+      second_statement = statement_fixture(title: "Second linked statement")
+      author = author_fixture()
+
+      opinion =
+        opinion_fixture(%{
+          author_id: author.id,
+          content: "One quote linked to multiple statements",
+          verification_status: :ai_verified,
+          date: ~D[2026-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(opinion, first_statement.id)
+      {:ok, _} = Opinions.add_opinion_to_statement(opinion, second_statement.id)
+
+      for statement <- [first_statement, second_statement] do
+        from(os in OpinionStatement,
+          where: os.opinion_id == ^opinion.id and os.statement_id == ^statement.id
+        )
+        |> Repo.update_all(set: [verification_status: :ai_verified])
+
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: author.id,
+          opinion_id: opinion.id,
+          verification_status: :ai_verified
+        })
+      end
+
+      {:ok, view, html} = live(conn, ~p"/")
+
+      assert length(Regex.scan(~r/One quote linked to multiple statements/, html)) == 1
+
+      view |> element("button[phx-click='toggle-switch']") |> render_click()
+
+      assert length(Regex.scan(~r/One quote linked to multiple statements/, render(view))) == 1
+    end
+
+    test "orders statements by the date of the opinion", %{conn: conn} do
+      older_statement = statement_fixture(title: "Older opinion statement")
+      newer_statement = statement_fixture(title: "Newer opinion statement")
+
+      add_opinion(older_statement, author_fixture(),
+        content: "Older dated opinion",
+        answer: :for,
+        date: ~D[2020-01-01],
+        date_precision: :day
+      )
+
+      add_opinion(newer_statement, author_fixture(),
+        content: "Newer dated opinion",
+        answer: :for,
+        date: ~D[2026-06-18],
+        date_precision: :day
+      )
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      newer_position = html |> :binary.match("Newer dated opinion") |> elem(0)
+      older_position = html |> :binary.match("Older dated opinion") |> elem(0)
+      assert newer_position < older_position
+    end
+
+    test "groups the cards under date headers", %{conn: conn} do
+      today_statement = statement_fixture(title: "Today statement")
+      old_statement = statement_fixture(title: "Old statement")
+
+      add_opinion(today_statement, author_fixture(),
+        content: "Fresh opinion",
+        answer: :for,
+        date: Date.utc_today(),
+        date_precision: :day
+      )
+
+      add_opinion(old_statement, author_fixture(),
+        content: "Ancient opinion",
+        answer: :for,
+        date: ~D[1963-08-28],
+        date_precision: :day
+      )
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ ~s(id="latest-date-group-0")
+      assert html =~ ~s(id="latest-date-group-1")
+      assert html =~ "Today"
+      assert html =~ "1963"
+
+      today_position = html |> :binary.match("Today") |> elem(0)
+      old_position = html |> :binary.match("1963") |> elem(0)
+      assert today_position < old_position
+    end
+
+    test "toggles from quote dates to added dates and shows added timestamps", %{conn: conn} do
+      recently_added_statement = statement_fixture(title: "Recently added old quote")
+      earlier_added_statement = statement_fixture(title: "Earlier added new quote")
+
+      recent_opinion =
+        add_opinion(recently_added_statement, author_fixture(),
+          content: "Old quote added recently",
+          answer: :for,
+          date: ~D[2020-01-01],
+          date_precision: :day
+        )
+
+      earlier_opinion =
+        add_opinion(earlier_added_statement, author_fixture(),
+          content: "New quote added earlier",
+          answer: :against,
+          date: Date.utc_today(),
+          date_precision: :day
+        )
+
+      one_hour_ago =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.add(-60 * 60, :second)
+        |> NaiveDateTime.truncate(:second)
+
+      eight_days_ago =
+        NaiveDateTime.utc_now()
+        |> NaiveDateTime.add(-8 * 86_400, :second)
+        |> NaiveDateTime.truncate(:second)
+
+      from(o in Opinion, where: o.id == ^recent_opinion.opinion_id)
+      |> Repo.update_all(set: [inserted_at: one_hour_ago])
+
+      from(o in Opinion, where: o.id == ^earlier_opinion.opinion_id)
+      |> Repo.update_all(set: [inserted_at: eight_days_ago])
+
+      {:ok, view, html} = live(conn, ~p"/")
+
+      assert html =~ "Quote date"
+      assert html =~ "Added"
+      refute html =~ "Added 1h ago"
+
+      recent_position = html |> :binary.match("Earlier added new quote") |> elem(0)
+      old_position = html |> :binary.match("Recently added old quote") |> elem(0)
+      assert recent_position < old_position
+
+      view |> element("button[phx-click='toggle-switch']") |> render_click()
+      assert_patch(view, "/?sort=quote-added")
+      added_html = render(view)
+
+      recently_added_position =
+        added_html |> :binary.match("Recently added old quote") |> elem(0)
+
+      earlier_added_position = added_html |> :binary.match("Earlier added new quote") |> elem(0)
+      assert recently_added_position < earlier_added_position
+      assert added_html =~ "Today"
+      assert added_html =~ "Added 1h ago"
+      assert added_html =~ "Added 8d ago"
+
+      {:ok, direct_view, direct_html} = live(conn, ~p"/?sort=quote-added")
+
+      assert has_element?(direct_view, "button[role='switch'][aria-checked='true']")
+      assert direct_html =~ "Added 1h ago"
+
+      direct_view |> element("button[phx-click='toggle-switch']") |> render_click()
+      assert_patch(direct_view, "/")
+      refute render(direct_view) =~ "Added 1h ago"
+    end
+
+    test "shows the author's statements and votes under the opinion", %{conn: conn} do
+      author = author_fixture(%{name: "Grace Hopper"})
+
+      featured_statement = statement_fixture(title: "Featured Statement")
+      other_statement = statement_fixture(title: "Other Voted Statement")
+
+      add_opinion(featured_statement, author,
+        content: "Featured newest opinion",
+        answer: :for,
+        date: ~D[2026-02-01],
+        date_precision: :day
+      )
+
+      # A plain vote (without opinion) on another statement: it should be
+      # listed under the author's statements and votes.
+      vote_fixture(%{
+        statement_id: other_statement.id,
+        author_id: author.id,
+        answer: :against
+      })
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ "Grace Hopper · statements &amp; votes"
+      assert html =~ "Other Voted Statement"
+      assert html =~ "Against"
+      assert html =~ "See all of Grace Hopper"
+
+      # Only the card for the statement with an opinion vote is rendered
+      assert length(Regex.scan(~r/Featured Statement/, html)) == 1
+      assert length(Regex.scan(~r/Other Voted Statement/, html)) == 1
+    end
+
+    test "hides the like, comment, x and delegate actions for logged out users", %{conn: conn} do
+      statement = statement_fixture(title: "Guest Actions Statement")
+      author = author_fixture()
+
+      add_opinion(statement, author,
+        content: "Guest actions opinion",
+        answer: :for,
+        date: ~D[2026-01-01],
+        date_precision: :day
+      )
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      refute html =~ "/images/comment.svg"
+      refute html =~ "/images/heart.svg"
+      refute html =~ "/images/x.svg"
+      refute html =~ "Delegate"
+    end
+
+    test "shows the like, comment, x and delegate actions for logged in users", %{conn: conn} do
+      statement = statement_fixture(title: "Logged In Actions Statement")
+      author = author_fixture()
+
+      add_opinion(statement, author,
+        content: "Logged in actions opinion",
+        answer: :for,
+        date: ~D[2026-01-01],
+        date_precision: :day
+      )
+
+      conn = log_in_user(conn, user_fixture())
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ "/images/comment.svg"
+      assert html =~ "/images/heart.svg"
+      assert html =~ "/images/x.svg"
+      assert html =~ "Delegate"
+    end
+  end
+end

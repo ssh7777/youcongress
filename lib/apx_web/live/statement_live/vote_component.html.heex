@@ -1,0 +1,242 @@
+<div id={"vote-component-#{@id}"} data-testid={"vote-card-#{@vote.id}"}>
+  <span
+    :if={
+      @page == :statements_index && @added_at_position == :badge && @visible_opinion &&
+        @show_opinion
+    }
+    data-testid={"added-at-badge-#{@vote.id}"}
+    class={[
+      "mb-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
+      added_at_badge_color(@visible_opinion, @vote)
+    ]}
+  >
+    Added {TimeAgo.short_time(added_at(@visible_opinion, @vote))}
+  </span>
+  <%= if @page != :author_show do %>
+    <div>
+      <div class="flex justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="shrink-0">
+            <.link href={author_path(@author)} class="relative top-1 inline-flex cursor-pointer">
+              <OpinionComponent.avatar_icon
+                is_human={!@vote.twin}
+                profile_image_url={@author.profile_image_url}
+              />
+            </.link>
+          </div>
+          <div>
+            <strong>
+              <.link href={author_path(@author)}>
+                {@author.name}{if @vote.twin, do: " AI"}
+              </.link>
+            </strong>
+            <div class="text-sm">
+              {@author.bio || @author.description}
+            </div>
+          </div>
+        </div>
+        <%= if @visible_opinion do %>
+          <QuoteMenu.render
+            author={@author}
+            id={@vote.id}
+            opinion={@visible_opinion}
+            current_user={@current_user}
+            statement={@statement}
+            page={@page}
+            myself={@myself}
+          />
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+  <%= if @show_vote do %>
+    <div class="flex justify-between">
+      <div class="text-sm pb-2">
+        <OpinionComponent.avatar_icon
+          :if={@page == :author_show}
+          is_human={!@vote.twin}
+          profile_image_url={@author.profile_image_url}
+        />
+        <%= if @vote.twin do %>
+          <%= if @page == :author_show do %>
+            {"#{@author.name} AI"}
+          <% end %>
+          would {response(assigns, @vote.answer)} and say according to AI:
+        <% else %>
+          {if @page == :author_show, do: @author.name || "Anonymous"}
+          {response_with_s(
+            assigns,
+            @vote.answer
+          )}
+          <%= unless @vote.direct do %>
+            via delegates
+          <% end %>
+          <%= if @visible_opinion do %>
+            and says:
+          <% else %>
+            <span class="text-xs text-gray-500">
+              · added {TimeAgo.short_time(added_at(@visible_opinion, @vote))}
+            </span>
+          <% end %>
+        <% end %>
+      </div>
+      <%= if @page == :author_show do %>
+        <QuoteMenu.render
+          author={@author}
+          id={@vote.id}
+          opinion={@visible_opinion}
+          current_user={@current_user}
+          statement={@statement}
+          page={@page}
+          myself={@myself}
+        />
+      <% end %>
+    </div>
+  <% end %>
+  <%= if @show_opinion && @visible_opinion do %>
+    <div>
+      <% citable_quote? =
+        Opinion.quote?(@visible_opinion) && !@vote.twin && !@visible_opinion.twin %>
+      <%= if @current_user && @current_user.author_id == @author.id do %>
+        <.link href={"/p/#{@statement.slug}"}>
+          <%= if citable_quote? do %>
+            <blockquote cite={@visible_opinion.source_url} class="inline">
+              {@truncated_content}
+            </blockquote>
+          <% else %>
+            {@truncated_content}
+          <% end %>
+        </.link>
+      <% else %>
+        <%= if citable_quote? do %>
+          <blockquote cite={@visible_opinion.source_url} class="inline">
+            {@truncated_content}
+          </blockquote>
+        <% else %>
+          {@truncated_content}
+        <% end %>
+      <% end %>
+
+      <%= if @show_more do %>
+        <.link
+          phx-click="toggle-expand"
+          phx-target={@myself}
+          class="text-indigo-600 hover:underline cursor-pointer text-sm"
+        >
+          more
+        </.link>
+      <% end %>
+      <%= if @regenerating_opinion_id == @visible_opinion.id do %>
+        <img src="/images/loading.gif" alt="Loading" />
+      <% end %>
+      <%= if Opinion.quote?(@visible_opinion) do %>
+        <.live_component
+          module={APXWeb.Components.VerificationAggregate}
+          id={"agg-#{@id}-#{@visible_opinion.id}-#{@statement.id}"}
+          opinion={@visible_opinion}
+          opinion_statement={@opinion_statement}
+          vote={@verification_vote}
+          current_user={@current_user}
+          link_to_opinion={@page != :statement_show}
+        />
+      <% end %>
+      <%= if Opinion.quote?(@visible_opinion) do %>
+        <span class="text-xs">
+          <%= if Opinion.has_source_url?(@visible_opinion) do %>
+            <a href={@visible_opinion.source_url} target="_blank" class="underline">source</a>
+          <% else %>
+            <.link href={~p"/c/#{@visible_opinion.id}"} class="underline">source</.link>
+          <% end %>
+        </span>
+      <% end %>
+      <%= if Opinion.display_date(@visible_opinion) do %>
+        <span class="text-xs text-gray-500">({Opinion.display_date(@visible_opinion)})</span>
+      <% end %>
+      <%= if @opinion_count > 1 do %>
+        <span class="inline-flex items-center gap-1 pl-2 text-xs text-gray-500">
+          <button
+            type="button"
+            phx-click="previous-opinion"
+            phx-target={@myself}
+            aria-label="Previous quote"
+            class="rounded border border-gray-300 px-1 leading-4 hover:bg-gray-50"
+          >
+            &lt;
+          </button>
+          <span data-testid={"quote-position-#{@vote.id}"}>
+            {@visible_opinion_position} of {@opinion_count}
+          </span>
+          <button
+            type="button"
+            phx-click="next-opinion"
+            phx-target={@myself}
+            aria-label="Next quote"
+            class="rounded border border-gray-300 px-1 leading-4 hover:bg-gray-50"
+          >
+            &gt;
+          </button>
+        </span>
+      <% end %>
+    </div>
+  <% end %>
+  <div
+    :if={!@login_required_for_actions || @current_user}
+    class={[
+      "flex justify-between pt-4",
+      !@current_user || (@current_user.author_id != @vote.author_id && "pb-4")
+    ]}
+  >
+    <%= if @visible_opinion && @show_opinion do %>
+      <div>
+        <span class="pr-2">
+          <OpinionComponent.like_icon opinion={@visible_opinion} liked={@liked} target={@myself} />
+        </span>
+        <span class="pr-2">
+          <OpinionComponent.comment_icon opinion={@visible_opinion} />
+        </span>
+        <OpinionComponent.x_icon
+          author={@author}
+          statement={@statement}
+          opinion={@visible_opinion}
+          current_user={@current_user}
+        />
+        <span
+          :if={@page != :statements_index || @added_at_position == :actions}
+          data-testid={"added-at-inline-#{@vote.id}"}
+          class="text-xs text-gray-500 pl-3"
+        >
+          added {TimeAgo.short_time(added_at(@visible_opinion, @vote))}
+        </span>
+      </div>
+    <% end %>
+    <div>
+      <%= if @delegable && (!@current_user || (@author.id != @current_user.author_id)) do %>
+        <div>
+          <Tooltip.delegation assigns={assigns} />
+          <%= if @delegating? do %>
+            <.link
+              phx-click="remove-delegation"
+              phx-value-author_id={@author.id}
+              phx-target={@myself}
+              class="rounded border border-indigo-600 bg-transparent px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors duration-200"
+            >
+              Delegating
+            </.link>
+          <% else %>
+            <.link
+              phx-click="add-delegation"
+              phx-value-author_id={@author.id}
+              phx-target={@myself}
+              class="rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 shadow-sm hover:bg-indigo-100"
+            >
+              Delegate
+            </.link>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+  <%= if @page != :statements_index && @current_user && @current_user.author_id != @vote.author_id do %>
+    <hr />
+  <% end %>
+</div>

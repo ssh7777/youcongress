@@ -1,0 +1,136 @@
+<article class="mx-auto max-w-4xl py-10 sm:py-14">
+  <nav aria-label="Breadcrumb" class="mb-6 text-sm text-apx-muted">
+    <.link href={~p"/intelligence"} class="hover:text-apx-cyan">Intelligence</.link>
+    <span aria-hidden="true" class="mx-2">/</span>
+    <span>{@category_label}</span>
+  </nav>
+
+  <header class="rounded-3xl border border-apx-line bg-apx-surface p-6 sm:p-10">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="apx-mono-label">{@category_label}</p>
+      <span class={impact_badge_class(@article.impact_rating)}>
+        {String.capitalize(@article.impact_rating)} sovereign impact
+      </span>
+    </div>
+    <h1 class="mt-5 text-3xl font-bold tracking-tight text-apx-text sm:text-4xl">
+      {@article.title}
+    </h1>
+    <div class="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-apx-muted">
+      <span>Source: {@article.source_name}</span>
+      <time :if={@article.published_at} datetime={DateTime.to_iso8601(@article.published_at)}>
+        Published {Date.to_string(DateTime.to_date(@article.published_at))}
+      </time>
+      <span>APX triage: {Date.to_string(DateTime.to_date(@article.ingested_at))}</span>
+    </div>
+  </header>
+
+  <section aria-labelledby="executive-brief" class="apx-panel mt-6 p-6 sm:p-8">
+    <p class="apx-mono-label">Automated source triage</p>
+    <h2 id="executive-brief" class="mt-2 text-2xl font-semibold text-apx-text">
+      Executive TL;DR
+    </h2>
+    <ul class="mt-5 space-y-3">
+      <li :for={bullet <- @executive_bullets} class="flex gap-3 text-sm leading-7 text-slate-200">
+        <span aria-hidden="true" class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-apx-cyan"></span>
+        <span>{bullet}</span>
+      </li>
+    </ul>
+    <p class="mt-5 border-t border-apx-line pt-4 text-xs leading-5 text-apx-muted">
+      This brief is rule-based, generated from the headline and the feed excerpt shown below. It is
+      not a full-article analysis, official risk score, or substitute for the source.
+    </p>
+  </section>
+
+  <section aria-labelledby="impact-assessment" class="mt-8">
+    <h2 id="impact-assessment" class="text-2xl font-semibold text-apx-text">
+      Sovereign impact rating
+    </h2>
+    <div class="apx-panel mt-4 p-5">
+      <p class="font-semibold text-apx-text">
+        {String.capitalize(@article.impact_rating)} — heuristic triage
+      </p>
+      <p class="mt-2 text-sm leading-6 text-apx-muted">{@article.impact_rationale}</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="policy-claims" class="mt-8">
+    <h2 id="policy-claims" class="text-2xl font-semibold text-apx-text">
+      Key policy claims to examine
+    </h2>
+    <p class="mt-2 text-sm leading-6 text-apx-muted">
+      These are extracted sentences from the publisher's RSS excerpt, not independently verified
+      conclusions or attributed policy positions.
+    </p>
+    <ul class="mt-4 space-y-3">
+      <li :for={claim <- @claims} class="apx-panel px-5 py-4 text-sm leading-6 text-slate-200">
+        {claim}
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="policy-links" class="mt-8">
+    <h2 id="policy-links" class="text-2xl font-semibold text-apx-text">
+      Related APX proposals and voting topics
+    </h2>
+    <ul :if={@policy_links != []} class="mt-4 space-y-3">
+      <li :for={link <- @policy_links} class="apx-panel p-5">
+        <.link href={"/p/#{link["slug"]}"} class="font-semibold text-apx-cyan hover:underline">
+          {link["title"]}
+        </.link>
+        <p :if={link["topics"] not in [nil, []]} class="mt-2 text-xs text-apx-muted">
+          Topics: {Enum.join(link["topics"], ", ")}
+        </p>
+      </li>
+    </ul>
+    <p :if={@policy_links == []} class="apx-panel mt-4 p-5 text-sm leading-6 text-apx-muted">
+      No existing proposal met the title-and-topic matching threshold for this item. Browse the
+      <.link href={~p"/explore"} class="font-semibold text-apx-cyan hover:underline">
+        APX proposal index
+      </.link>
+      to inspect current voting topics.
+    </p>
+  </section>
+
+  <section aria-labelledby="entities" class="mt-8">
+    <h2 id="entities" class="text-2xl font-semibold text-apx-text">
+      Key entities and definitions
+    </h2>
+    <dl class="mt-4 grid gap-3 sm:grid-cols-2">
+      <div :for={entity <- @entity_definitions} class="apx-panel p-5">
+        <dt class="font-semibold text-apx-text">{entity.name}</dt>
+        <dd class="mt-2 text-sm leading-6 text-apx-muted">{entity.definition}</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section aria-labelledby="source-context" class="mt-8">
+    <h2 id="source-context" class="text-2xl font-semibold text-apx-text">Source context</h2>
+    <blockquote :if={@article.summary} class="apx-panel mt-4 border-l-2 border-l-apx-cyan p-5 text-sm leading-7 text-slate-200">
+      {@article.summary}
+    </blockquote>
+    <p :if={!@article.summary} class="apx-panel mt-4 p-5 text-sm leading-6 text-apx-muted">
+      The source feed did not provide an excerpt. Follow the publisher link for the full article.
+    </p>
+    <div class="apx-panel mt-4 p-5">
+      <h3 class="font-semibold text-apx-text">Canonical source attribution</h3>
+      <a
+        href={@article.canonical_url}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        class="mt-2 block break-all text-sm text-apx-cyan underline decoration-apx-blue underline-offset-4"
+      >
+        {@article.canonical_url}
+      </a>
+      <p class="mt-2 text-xs leading-5 text-apx-muted">
+        The publisher owns its reporting. APX stores only public feed metadata and a short excerpt,
+        and links back to the publisher for full context and corrections.
+      </p>
+    </div>
+  </section>
+
+  <aside class="mt-8 border-t border-apx-line pt-5 text-xs leading-5 text-apx-muted">
+    APX Epistemic Research Directorate is the product's editorial label, not a separate registered
+    non-profit, government body, or certification authority. APX does not claim a fixed expert
+    consensus percentage; displayed positions reflect the underlying records and their limits.
+  </aside>
+</article>

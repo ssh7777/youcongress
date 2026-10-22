@@ -1,0 +1,384 @@
+defmodule APXWeb.GoogleAuthController do
+  use APXWeb, :controller
+
+  require Logger
+
+  alias APX.Accounts
+  alias APX.Authors
+  alias APX.Google.GoogleAPI
+  alias APX.Track
+  alias APXWeb.ReturnTo
+  alias APXWeb.UserAuth
+
+  @doc """
+  Initiates the Google OAuth flow by redirecting to Google's authorization URL.
+  Stores the state in the session for verification in the callback.
+  Optionally stores pending_actions (delegate_ids and votes) in session for processing after login.
+  """
+  def request(conn, params) do
+    client_id = Application.get_env(:apx, :google_client_id)
+    callback_url = Application.get_env(:apx, :google_callback_url)
+
+    if is_nil(client_id) or is_nil(callback_url) do
+      conn
+      |> put_flash(:error, "Google authentication is not configured.")
+      |> redirect(to: ~p"/log_in")
+    else
+      {authorize_url, state} = GoogleAPI.generate_authorize_url(client_id, callback_url)
+
+      conn
+      |> put_session(:google_oauth_state, state)
+      |> maybe_store_pending_actions(params["pending_actions"])
+      |> maybe_store_return_to(request_return_to(conn, params))
+      |> redirect(external: authorize_url)
+    end
+  end
+
+  defp maybe_store_pending_actions(conn, nil), do: conn
+
+  defp maybe_store_pending_actions(conn, pending_actions) do
+    put_session(conn, :oauth_pending_actions, pending_actions)
+  end
+
+  defp maybe_store_return_to(conn, return_to) do
+    case ReturnTo.sanitize(return_to) do
+      nil -> conn
+      path -> put_session(conn, :oauth_return_to, path)
+    end
+  end
+
+  defp request_return_to(conn, params) do
+    [
+      params["return_to"],
+      referrer_return_to(conn),
+      get_session(conn, :user_return_to),
+      get_session(conn, :registration_return_to)
+    ]
+    |> Enum.find_value(&ReturnTo.sanitize/1)
+  end
+
+  defp referrer_return_to(conn) do
+    conn
+    |> get_req_header("referer")
+    |> List.first()
+    |> ReturnTo.from_same_origin_url(conn.host)
+  end
+
+  @doc """
+  Handles the OAuth callback from Google.
+  Exchanges the authorization code for tokens, fetches user info,
+  and either logs in an existing user or creates a new one.
+  """
+  def callback(conn, %{"code" => code, "state" => state}) do
+    stored_state = get_session(conn, :google_oauth_state)
+    callback_url = Application.get_env(:apx, :google_callback_url)
+
+    conn = delete_session(conn, :google_oauth_state)
+
+    if is_nil(stored_state) or state != stored_state do
+      Logger.warning("Google OAuth state mismatch: expected=#{stored_state}, got=#{state}")
+
+      conn
+      |> put_flash(:error, "Authentication failed. Please try again.")
+      |> redirect(to: ~p"/log_in")
+    else
+      handle_token_exchange(conn, code, callback_url)
+    end
+  end
+
+  def callback(conn, %{"error" => error, "error_description" => description}) do
+    Logger.warning("Google OAuth error: #{error} - #{description}")
+
+    conn
+    |> put_flash(:error, "Authentication was cancelled or denied.")
+    |> redirect(to: ~p"/log_in")
+  end
+
+  def callback(conn, %{"error" => error}) do
+    Logger.warning("Google OAuth error: #{error}")
+
+    conn
+    |> put_flash(:error, "Authentication was cancelled or denied.")
+    |> redirect(to: ~p"/log_in")
+  end
+
+  def callback(conn, _params) do
+    conn
+    |> put_flash(:error, "Authentication failed. Please try again.")
+    |> redirect(to: ~p"/log_in")
+  end
+
+  defp handle_token_exchange(conn, code, callback_url) do
+    case GoogleAPI.fetch_token(code, callback_url) do
+      {:ok, access_token} ->
+        handle_user_info(conn, access_token)
+
+      {:error, reason} ->
+        Logger.error("Google token exchange failed: #{reason}")
+
+        conn
+        |> put_flash(:error, "Authentication failed. Please try again.")
+        |> redirect(to: ~p"/log_in")
+    end
+  end
+
+  defp handle_user_info(conn, access_token) do
+    case GoogleAPI.fetch_user_info(access_token) do
+      {:ok, %{email_verified: true, email: email} = google_user_data}
+      when is_binary(email) and email != "" ->
+        handle_user_lookup_or_create(conn, google_user_data)
+
+      {:ok, _google_user_data} ->
+        Logger.warning("Google authentication rejected because the email is not verified")
+
+        conn
+        |> put_flash(:error, "Google must verify your email before you can sign in.")
+        |> redirect(to: ~p"/log_in")
+
+      {:error, reason} ->
+        Logger.error("Google user info fetch failed: #{reason}")
+
+        conn
+        |> put_flash(:error, "Failed to retrieve your Google profile. Please try again.")
+        |> redirect(to: ~p"/log_in")
+    end
+  end
+
+  defp handle_user_lookup_or_create(conn, google_user_data) do
+    %{google_id: google_id, email: email} = google_user_data
+
+    # Look for existing author by google_id
+    case Authors.get_author_by_google_id(google_id) do
+      nil ->
+        # No author with google_id - check if user exists with this email
+        # (e.g., user signed up with X using the same email)
+        case email && Accounts.get_user_by_email(email) do
+          nil ->
+            # No existing user - create new author and user
+            create_new_author_and_user(conn, google_user_data)
+
+          user ->
+            # User exists with this email - link Google account to their author
+            link_google_to_existing_user(conn, user, google_user_data)
+        end
+
+      author ->
+        # Author exists with google_id - check if user is linked
+        case Accounts.get_user_by_author_id(author.id) do
+          nil ->
+            # Author exists but no user linked - create user and link to author
+            create_user_for_existing_author(conn, author, google_user_data)
+
+          user ->
+            # Both author and user exist - log them in
+            log_in_existing_user(conn, user, author, google_user_data)
+        end
+    end
+  end
+
+  defp link_google_to_existing_user(conn, user, google_user_data) do
+    # Load the author if not already loaded
+    user = APX.Repo.preload(user, :author)
+    author = user.author
+
+    # Update the author with Google ID
+    author_update_attrs = build_author_attrs(google_user_data)
+
+    case Authors.update_author(author, author_update_attrs) do
+      {:ok, _updated_author} ->
+        Track.event("Login via Google (linked account)", user)
+
+        # If user's email isn't confirmed but Google's is verified, confirm it
+        user =
+          if is_nil(user.email_confirmed_at) && google_user_data.email_verified do
+            case Accounts.confirm_user_email(user) do
+              {:ok, confirmed_user} -> confirmed_user
+              _ -> user
+            end
+          else
+            user
+          end
+
+        conn = process_pending_actions(conn, user)
+        {conn, return_to} = pop_oauth_return_to(conn)
+
+        if user.email_confirmed_at do
+          conn
+          |> put_flash(:info, "Welcome back! Your Google account has been linked.")
+          |> maybe_put_user_return_to(return_to)
+          |> UserAuth.log_in_user(user)
+        else
+          conn
+          |> put_flash(:info, "Welcome back! Your Google account has been linked.")
+          |> put_sign_up_return_to(return_to)
+          |> UserAuth.log_in_user(user)
+        end
+
+      {:error, changeset} ->
+        Logger.error("Failed to link Google account: #{inspect(changeset.errors)}")
+
+        conn
+        |> put_flash(:error, "Failed to link Google account. Please try again.")
+        |> redirect(to: ~p"/log_in")
+    end
+  end
+
+  defp create_new_author_and_user(conn, google_user_data) do
+    author_attrs = build_author_attrs(google_user_data)
+    user_attrs = build_user_attrs(google_user_data)
+
+    case Accounts.google_register_user(user_attrs, author_attrs) do
+      {:ok, %{user: user}} ->
+        Track.event("Register via Google", user)
+
+        # If Google provided a verified email, auto-confirm it
+        user =
+          if google_user_data.email_verified && user.email do
+            case Accounts.confirm_user_email(user) do
+              {:ok, confirmed_user} -> confirmed_user
+              _ -> user
+            end
+          else
+            user
+          end
+
+        conn = process_pending_actions(conn, user)
+        {conn, return_to} = pop_oauth_return_to(conn)
+
+        conn
+        |> put_post_google_auth_return_to(user, return_to)
+        |> UserAuth.log_in_user(user)
+
+      {:error, :author, changeset, _} ->
+        Logger.error("Failed to create author for Google signup: #{inspect(changeset.errors)}")
+
+        conn
+        |> put_flash(:error, "Failed to create account. Please try again.")
+        |> redirect(to: ~p"/log_in")
+
+      {:error, :user, changeset, _} ->
+        Logger.error("Failed to create user for Google signup: #{inspect(changeset.errors)}")
+
+        conn
+        |> put_flash(:error, "Failed to create account. Please try again.")
+        |> redirect(to: ~p"/log_in")
+    end
+  end
+
+  defp create_user_for_existing_author(conn, author, google_user_data) do
+    author_update_attrs = build_author_attrs(google_user_data)
+    user_attrs = build_user_attrs(google_user_data)
+
+    case Accounts.google_register_user_with_existing_author(
+           user_attrs,
+           author,
+           author_update_attrs
+         ) do
+      {:ok, %{user: user}} ->
+        Track.event("Register via Google (existing author)", user)
+
+        # If Google provided a verified email, auto-confirm it
+        user =
+          if google_user_data.email_verified && user.email do
+            case Accounts.confirm_user_email(user) do
+              {:ok, confirmed_user} -> confirmed_user
+              _ -> user
+            end
+          else
+            user
+          end
+
+        conn = process_pending_actions(conn, user)
+        {conn, return_to} = pop_oauth_return_to(conn)
+
+        conn
+        |> put_post_google_auth_return_to(user, return_to)
+        |> UserAuth.log_in_user(user)
+
+      {:error, :author, changeset, _} ->
+        Logger.error("Failed to update author for Google signup: #{inspect(changeset.errors)}")
+
+        conn
+        |> put_flash(:error, "Failed to create account. Please try again.")
+        |> redirect(to: ~p"/log_in")
+
+      {:error, :user, changeset, _} ->
+        Logger.error("Failed to create user for Google signup: #{inspect(changeset.errors)}")
+
+        conn
+        |> put_flash(:error, "Failed to create account. Please try again.")
+        |> redirect(to: ~p"/log_in")
+    end
+  end
+
+  defp log_in_existing_user(conn, user, author, google_user_data) do
+    # Update author with latest Google profile data
+    author_update_attrs = build_author_attrs(google_user_data)
+    Authors.update_author(author, author_update_attrs)
+
+    Track.event("Login via Google", user)
+
+    conn = process_pending_actions(conn, user)
+    {conn, return_to} = pop_oauth_return_to(conn)
+
+    # A confirmed email is required; phone verification remains optional.
+    if user.email_confirmed_at do
+      conn
+      |> maybe_put_user_return_to(return_to)
+      |> UserAuth.log_in_user(user)
+    else
+      conn
+      |> put_flash(:info, "Welcome back! Please complete your profile.")
+      |> put_sign_up_return_to(return_to)
+      |> UserAuth.log_in_user(user)
+    end
+  end
+
+  defp build_author_attrs(google_user_data) do
+    %{
+      google_id: google_user_data.google_id,
+      name: google_user_data.name,
+      profile_image_url: google_user_data.profile_image_url
+    }
+  end
+
+  defp build_user_attrs(google_user_data) do
+    if google_user_data.email do
+      %{email: google_user_data.email}
+    else
+      %{}
+    end
+  end
+
+  defp process_pending_actions(conn, user) do
+    pending_json = get_session(conn, :oauth_pending_actions)
+    conn = delete_session(conn, :oauth_pending_actions)
+
+    APX.PendingActions.process(user, pending_json)
+
+    conn
+  end
+
+  defp pop_oauth_return_to(conn) do
+    return_to = get_session(conn, :oauth_return_to)
+    {delete_session(conn, :oauth_return_to), ReturnTo.sanitize(return_to)}
+  end
+
+  defp maybe_put_user_return_to(conn, nil), do: conn
+
+  defp maybe_put_user_return_to(conn, return_to) do
+    put_session(conn, :user_return_to, return_to)
+  end
+
+  defp put_sign_up_return_to(conn, return_to) do
+    put_session(conn, :user_return_to, ReturnTo.sign_up_path(return_to))
+  end
+
+  defp put_post_google_auth_return_to(conn, user, return_to) do
+    if user.email_confirmed_at do
+      maybe_put_user_return_to(conn, return_to)
+    else
+      put_sign_up_return_to(conn, return_to)
+    end
+  end
+end

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RemoveSourceUrlFromVotes do
+defmodule APX.Repo.Migrations.RemoveSourceUrlFromVotes do
   use Ecto.Migration
 
   def change do

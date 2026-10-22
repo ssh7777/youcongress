@@ -1,0 +1,82 @@
+defmodule APXWeb.WelcomeLiveTest do
+  use APXWeb.ConnCase
+
+  import Phoenix.LiveViewTest
+  import APX.AccountsFixtures
+
+  alias APX.Accounts
+
+  defp create_user(_) do
+    current_user = user_fixture(%{}, %{name: "Someone"})
+    %{current_user: current_user}
+  end
+
+  describe "Welcome" do
+    setup [:create_user]
+
+    test "Non-logged visitors can't load the page", %{conn: conn} do
+      {:error,
+       {:redirect, %{flash: %{"error" => "You must log in to access this page."}, to: "/log_in"}}} =
+        live(conn, ~p"/welcome")
+    end
+
+    test "Logged users can load the page", %{conn: conn, current_user: current_user} do
+      conn = log_in_user(conn, current_user)
+      {:ok, _welcome_live, html} = live(conn, ~p"/welcome")
+      assert html =~ "Welcome to APX"
+    end
+
+    test "Accepting the newsletter, saves it and redirects to home", %{
+      conn: conn,
+      current_user: current_user
+    } do
+      conn = log_in_user(conn, current_user)
+      {:ok, welcome_live, _html} = live(conn, ~p"/welcome")
+
+      assert current_user.newsletter == false
+
+      {:error, {:redirect, %{to: "/"}}} =
+        welcome_live
+        |> form("#user-form", %{"user[newsletter]" => true})
+        |> render_submit()
+
+      current_user = Accounts.get_user!(current_user.id)
+
+      assert current_user.newsletter == true
+    end
+
+    test "Accepting the newsletter redirects to return_to when provided", %{
+      conn: conn,
+      current_user: current_user
+    } do
+      conn = log_in_user(conn, current_user)
+      return_to = "/p/ai-alignment-public-deliberation"
+
+      {:ok, welcome_live, _html} = live(conn, ~p"/welcome?#{%{return_to: return_to}}")
+
+      {:error, {:redirect, %{to: ^return_to}}} =
+        welcome_live
+        |> form("#user-form", %{"user[newsletter]" => true})
+        |> render_submit()
+    end
+
+    test "Not accepting the newsletter, saves it and redirects to home", %{
+      conn: conn,
+      current_user: current_user
+    } do
+      conn = log_in_user(conn, current_user)
+      {:ok, welcome_live, _html} = live(conn, ~p"/welcome")
+
+      assert current_user.newsletter == false
+
+      {:error, {:redirect, %{to: "/"}}} =
+        welcome_live
+        |> form("#user-form", %{"user[newsletter]" => false})
+        |> render_submit()
+
+      current_user = Accounts.get_user!(current_user.id)
+
+      assert current_user.newsletter == false
+    end
+  end
+end

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateReconsiderationDelegateSelections do
+defmodule APX.Repo.Migrations.CreateReconsiderationDelegateSelections do
   use Ecto.Migration
 
   def change do

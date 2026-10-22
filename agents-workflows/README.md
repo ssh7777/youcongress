@@ -1,22 +1,26 @@
 # Agent workflows
 
-The system currently has two operational modes that converge on the same data model.
+APX has repository-native workers for source discovery, verification, and structured policy intelligence. These workflows share the same persistent records and should be treated as review aids, not independent evidence.
 
-In the application workflow, which requires `FEATURE_FLAGS=automatic_verifications=false`, separate workers discover candidate quotations, link them to relevant statements, verify source fidelity, assess relevance, infer stance, and synthesize collections of records. The separation allows the verification passes to run not only on machine-discovered records but also on quotations contributed through the interface or external tools.
+## Quote and position review
 
-For larger collections, such as the Future of Life Foundation Epistack competition case studies, scheduled coding-agent jobs perform bulk discovery and insertion using skills. Records then pass through the same structured verification. This mode is currently more cost-effective for large searches, although it is less encapsulated than the repository-native workflow.
+The application can discover candidate quotations, link them to relevant statements, check source fidelity, assess relevance, infer a stance, and synthesize collections of records. The separate passes allow review of machine-discovered records, contributions made through the interface, and records created through authorized tools.
 
-## Simplified pipeline
+## Policy intelligence ingestion
 
-> source discovery → quote extraction and attribution → statement linking + stance inference → source-fidelity check → quote-statement relevance check → stance check → label as "ai verified" → export
+The scheduled `APX.Workers.IntelligenceIngestionWorker` fetches configured public RSS/Atom feeds. It filters metadata by category, relevance, and freshness, then stores source-linked triage records and suggested policy links. See `config/config.exs` and `mix intelligence.ingest` for the sources and manual run command. The pipeline does not download or summarize full publisher articles.
 
-These are separate task passes, not independent evidence sources. Agreement among automated passes should not be interpreted as human validation. However, humans can manually assess records in the UI, and authors can claim their profiles by logging in with X to update or delete their quotations.
+## Review principles
 
-## Reusable Codex skills
+> source discovery → attribution → proposal linking → source/relevance checks → reviewable status → export
 
-The skills used for the scheduled workflow are versioned here so contributors can inspect and reuse them:
+These are task passes, not independent evidence sources. Agreement among automated checks is not human validation, and a stored verification status can be challenged. Keep source links and provenance intact when reviewing or exporting a record.
 
-- [youcongress-topic-quotes](skills/youcongress-topic-quotes/SKILL.md) discovers eligible, sourced quotes, links each to an existing statement, and infers a candidate stance.
-- [youcongress-verify-quotes](skills/youcongress-verify-quotes/SKILL.md) performs the structured source-fidelity, quote-statement relevance, and stance checks on pending records.
+## Reusable skills
 
-To make these available to Codex locally, copy the two skill directories into `~/.codex/skills/`, preserving their directory names and contents. They require access to the YouCongress MCP tools; the verification skill also includes its validation references under `references/`.
+The skills used for repository workflows are versioned here:
+
+- [apx-topic-quotes](skills/apx-topic-quotes/SKILL.md) discovers eligible, sourced quotes, links each to an existing statement, and infers a candidate stance.
+- [apx-verify-quotes](skills/apx-verify-quotes/SKILL.md) performs structured source-fidelity, quote-statement relevance, and stance checks on pending records.
+
+To make these available locally, copy the skill directories into `~/.codex/skills/`, preserving their names and contents. They require access to authorized APX tools; the verification skill also includes its validation references under `references/`.

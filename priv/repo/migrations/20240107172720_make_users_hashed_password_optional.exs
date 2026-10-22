@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.MakeUsersHashedPasswordOptional do
+defmodule APX.Repo.Migrations.MakeUsersHashedPasswordOptional do
   use Ecto.Migration
 
   def change do

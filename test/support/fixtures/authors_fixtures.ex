@@ -1,7 +1,7 @@
-defmodule YouCongress.AuthorsFixtures do
+defmodule APX.AuthorsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `YouCongress.Authors` context.
+  entities via the `APX.Authors` context.
   """
 
   @doc """
@@ -25,7 +25,7 @@ defmodule YouCongress.AuthorsFixtures do
         twitter_username: "user#{unique_id}",
         wikipedia_url: "https://en.wikipedia.org/wiki/Test_Author_#{unique_id}"
       })
-      |> YouCongress.Authors.create_author()
+      |> APX.Authors.create_author()
 
     author
   end
@@ -35,7 +35,7 @@ defmodule YouCongress.AuthorsFixtures do
          Map.has_key?(attrs, :country) or Map.has_key?(attrs, "country") do
       attrs
     else
-      Map.put(attrs, :country_id, YouCongress.CountriesFixtures.country_fixture().id)
+      Map.put(attrs, :country_id, APX.CountriesFixtures.country_fixture().id)
     end
   end
 end

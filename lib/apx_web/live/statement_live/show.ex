@@ -1,0 +1,509 @@
+defmodule APXWeb.StatementLive.Show do
+  alias Phoenix.LiveView.Socket
+  use APXWeb, :live_view
+
+  require Logger
+
+  alias APX.Likes
+  alias APX.Statements
+  alias APXWeb.StatementLive.Show.VotesLoader
+  alias APXWeb.StatementLive.Show.CurrentUserVoteComponent
+  alias APXWeb.StatementLive.VoteComponent
+  alias APXWeb.StatementLive.Show.Comments
+  alias APX.Track
+  alias APX.Accounts.Permissions
+  alias APXWeb.StatementLive.CastVoteComponent
+  alias APXWeb.StatementLive.ResultsComponent
+  alias APX.HallsStatements
+  alias APX.Opinions.Quotes.Quotator
+  alias APX.Statements.Synthesis
+  alias APXWeb.StatementLive.Show.Params
+  alias APXWeb.StatementLive.SynthesisComponent
+  alias APX.Votes.VoteFrequencies
+  alias APXWeb.ReturnTo
+  alias APXWeb.SEO
+
+  @impl true
+  def mount(_, session, socket) do
+    socket = assign_current_user(socket, session["user_token"])
+    %{assigns: %{current_user: current_user}} = socket
+
+    if connected?(socket) do
+      Track.event("View Statement", current_user)
+    end
+
+    {:ok,
+     socket
+     |> assign(:random_statements_from_main_hall, [])
+     |> assign(:pending_guest_votes, %{})
+     |> assign(:pending_vote_prompt, nil)
+     |> assign(:vote_auth_return_to, nil)
+     |> assign(:show_vote_auth_modal, false)
+     |> assign(:show_country_results, false)
+     |> assign(:country_vote_frequencies, nil)
+     |> assign(:selected_country, nil)
+     |> assign(:selected_country_name, nil)
+     |> assign(:country_results_filters, VoteFrequencies.default_country_filters())
+     |> assign(:show_year_results, false)
+     |> assign(:year_vote_frequencies, nil)
+     |> assign(:year_results_filters, VoteFrequencies.default_year_filters())
+     |> assign(:show_synthesis, false)
+     |> assign(:show_synthesis_card?, false)
+     |> assign(:synthesis_opinions, %{})
+     |> assign(:synthesis_regenerating, false)}
+  end
+
+  @impl true
+  @spec handle_params(map, binary, Socket.t()) :: {:noreply, Socket.t()}
+  def handle_params(%{"slug" => slug} = params, url, socket) do
+    statement = Statements.get_by!(slug: slug)
+    statement_page_params = Params.from_params(params)
+
+    socket =
+      socket
+      |> assign_statement_page_params(statement_page_params)
+      |> assign(:return_to, ReturnTo.from_url(url))
+      |> assign(:page_title, page_title(socket.assigns.live_action, statement.title))
+      |> assign(:canonical_url, url(~p"/p/#{statement.slug}"))
+      |> assign(:og_type, "article")
+      |> assign(:page_image, url(~p"/images/social-statement.png"))
+      |> assign(
+        :page_image_alt,
+        "Sourced positions for and against: #{SEO.truncate(statement.title, 140)}"
+      )
+      |> assign(:page_image_width, 1731)
+      |> assign(:page_image_height, 909)
+      |> assign(:statement, statement)
+      |> assign(reload: false)
+      |> assign(full_width: true)
+      |> assign(:show_ai_quote_action, true)
+      |> assign(:regenerating_opinion_id, nil)
+      |> assign(:find_quotes_in_progress, Quotator.find_quotes_in_progress?(statement.id))
+      |> load_statement_and_likes(statement)
+      |> maybe_reload_country_vote_frequencies()
+      |> assign_selected_country_name()
+      |> maybe_reload_year_vote_frequencies()
+      |> assign_page_description()
+      |> load_random_statements(statement.id)
+
+    current_user_vote = socket.assigns.current_user_vote
+    socket = assign(socket, editing: !current_user_vote || !current_user_vote.opinion_id)
+
+    {:noreply, socket}
+  end
+
+  def handle_params(%{"slug" => slug}, "edit", socket) do
+    statement = Statements.get_by!(slug: slug)
+    current_user = socket.assigns.current_user
+
+    socket =
+      socket
+      |> assign(:page_title, page_title(socket.assigns.live_action, statement.title))
+      |> assign(
+        :page_description,
+        "Find agreement, understand disagreement."
+      )
+      |> assign(:statement, statement)
+      |> assign(:current_user, current_user)
+      |> assign(:show_ai_quote_action, true)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  @spec handle_event(binary, map, Socket.t()) :: {:noreply, Socket.t()}
+
+  def handle_event("find-sourced-quotes", %{"statement_id" => statement_id}, socket) do
+    statement_id = String.to_integer(statement_id)
+    current_user = socket.assigns.current_user
+
+    cond do
+      is_nil(current_user) ->
+        {:noreply, redirect(socket, to: ReturnTo.log_in_path(nil, socket.assigns[:return_to]))}
+
+      not Permissions.can_generate_ai_votes?(current_user) ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "AI quote search uses credits. Contact APX at /contact to ask about access."
+         )}
+
+      true ->
+        case Quotator.enqueue_find_quotes(statement_id, current_user.id) do
+          {:ok, _job} ->
+            Track.event("Find quotes", current_user)
+
+            {:noreply,
+             socket
+             |> assign(:find_quotes_in_progress, true)
+             |> clear_flash()}
+
+          {:error, :rate_limited} ->
+            {:noreply,
+             put_flash(socket, :error, "AI quote search limit reached. Please try again later.")}
+
+          {:error, reason} ->
+            Logger.error("Failed to enqueue quote discovery: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Unable to start AI quote search.")}
+        end
+    end
+  end
+
+  def handle_event("load-more-opinions", _, socket) do
+    {:noreply, VotesLoader.load_more_votes(socket)}
+  end
+
+  def handle_event("post", %{"comment" => opinion}, socket) do
+    Comments.post_event(opinion, socket)
+  end
+
+  def handle_event("cancel-edit", _, socket) do
+    socket =
+      socket
+      |> assign(editing: false)
+      |> clear_flash()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("delete-comment", _, socket) do
+    Comments.delete_event(socket)
+  end
+
+  def handle_event("reload", _, socket) do
+    statement = socket.assigns.statement
+
+    socket =
+      socket
+      |> load_statement_and_likes(statement)
+      |> assign(:find_quotes_in_progress, Quotator.find_quotes_in_progress?(statement.id))
+      |> assign(reload: false)
+      |> clear_flash()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("edit", _, socket) do
+    {:noreply, assign(socket, editing: true)}
+  end
+
+  def handle_event("filter-quotes", _, socket) do
+    params = Params.toggle_source(socket.assigns.statement_page_params, :quotes)
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event("filter-users", _, socket) do
+    params = Params.toggle_source(socket.assigns.statement_page_params, :users)
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event("filter-answer", %{"answer" => answer}, socket) do
+    params = Params.toggle_answer(socket.assigns.statement_page_params, answer)
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event("close-vote-auth-modal", _, socket) do
+    socket =
+      socket
+      |> assign(:show_vote_auth_modal, false)
+      |> assign(:pending_vote_prompt, nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle-synthesis", _, socket) do
+    params =
+      Params.put(socket.assigns.statement_page_params, %{
+        show_synthesis: !socket.assigns.show_synthesis
+      })
+
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event("regenerate-synthesis", _, socket) do
+    current_user = socket.assigns.current_user
+
+    if Permissions.can_regenerate_statement_synthesis?(current_user) do
+      case Synthesis.enqueue_regeneration(socket.assigns.statement.id) do
+        {:ok, %Oban.Job{conflict?: true}} ->
+          {:noreply, put_flash(socket, :info, "Synthesis regeneration is already in progress.")}
+
+        {:ok, _job} ->
+          {:noreply,
+           socket
+           |> assign(:synthesis_regenerating, true)
+           |> put_flash(
+             :info,
+             "Regenerating the AI synthesis. It will appear here in a few minutes."
+           )}
+
+        {:error, reason} ->
+          Logger.error("Failed to enqueue synthesis regeneration: #{inspect(reason)}")
+          {:noreply, put_flash(socket, :error, "Unable to start synthesis regeneration.")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle-country-results", %{"statement_id" => _statement_id}, socket) do
+    params =
+      Params.put(socket.assigns.statement_page_params, %{
+        results: if(socket.assigns.show_country_results, do: nil, else: :country),
+        selected_country: nil
+      })
+
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event("select-country", %{"country" => country}, socket) do
+    selected = parse_selected_country(country)
+
+    new_selected =
+      if socket.assigns.selected_country == selected, do: nil, else: selected
+
+    params =
+      Params.put(socket.assigns.statement_page_params, %{
+        results: :country,
+        selected_country: new_selected
+      })
+
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event(
+        "toggle-country-results-filter",
+        %{"filter" => filter, "statement_id" => _statement_id},
+        socket
+      ) do
+    filters =
+      VoteFrequencies.toggle_country_filter(socket.assigns.country_results_filters, filter)
+
+    params =
+      Params.put(socket.assigns.statement_page_params, %{
+        results: :country,
+        country_results_filters: filters
+      })
+
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event("toggle-year-results", %{"statement_id" => _statement_id}, socket) do
+    params =
+      Params.put(socket.assigns.statement_page_params, %{
+        results: if(socket.assigns.show_year_results, do: nil, else: :year),
+        selected_country: nil
+      })
+
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  def handle_event(
+        "toggle-year-results-filter",
+        %{"filter" => filter, "statement_id" => _statement_id},
+        socket
+      ) do
+    filters =
+      VoteFrequencies.toggle_year_filter(socket.assigns.year_results_filters, filter)
+
+    params =
+      Params.put(socket.assigns.statement_page_params, %{
+        results: :year,
+        year_results_filters: filters
+      })
+
+    {:noreply, patch_statement_page_params(socket, params)}
+  end
+
+  @impl true
+
+  def handle_info(:reload, socket) do
+    socket = load_statement_and_likes(socket, socket.assigns.statement)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:put_flash, kind, msg}, socket) do
+    socket =
+      socket
+      |> clear_flash()
+      |> put_flash(kind, msg)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:require_auth_to_vote, payload}, socket) do
+    {:noreply, record_guest_vote(socket, payload)}
+  end
+
+  def handle_info({:opinion_like_changed, opinion_id, liked}, socket) do
+    liked_opinion_ids =
+      if liked do
+        Enum.uniq([opinion_id | socket.assigns.liked_opinion_ids])
+      else
+        Enum.reject(socket.assigns.liked_opinion_ids, &(&1 == opinion_id))
+      end
+
+    {:noreply, assign(socket, :liked_opinion_ids, liked_opinion_ids)}
+  end
+
+  def handle_info({:voted, _vote}, socket) do
+    statement = socket.assigns.statement
+
+    socket =
+      socket
+      |> load_statement_and_likes(statement)
+      |> maybe_reload_country_vote_frequencies()
+      |> assign_selected_country_name()
+      |> maybe_reload_year_vote_frequencies()
+
+    vote = socket.assigns.current_user_vote
+    socket = assign(socket, editing: !vote || !vote.opinion_id)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({APXWeb.StatementLive.FormComponent, {:saved, statement}}, socket) do
+    {:noreply,
+     socket
+     |> put_flash(:info, "Statement updated successfully")
+     |> push_patch(to: ~p"/p/#{statement.slug}")}
+  end
+
+  def handle_info(_, socket), do: {:noreply, socket}
+
+  @spec page_title(atom, binary) :: binary
+  defp page_title(:show, statement_title), do: statement_title
+  defp page_title(:edit, _), do: "Edit Poll"
+
+  # Depends on vote_frequencies, quotes_votes_count and seo_quote_authors, so it must run
+  # after VotesLoader has populated the assigns.
+  defp assign_page_description(socket) do
+    %{
+      statement: statement,
+      vote_frequencies: vote_frequencies,
+      quotes_votes_count: quotes_count,
+      seo_quote_authors: seo_quote_authors
+    } =
+      socket.assigns
+
+    assign(
+      socket,
+      :page_description,
+      SEO.statement_description(
+        statement.title,
+        vote_frequencies,
+        quotes_count,
+        seo_quote_authors
+      )
+    )
+  end
+
+  defp load_random_statements(socket, statement_id) do
+    random_statements_from_main_hall =
+      case HallsStatements.get_main_hall(statement_id) do
+        nil ->
+          []
+
+        main_hall ->
+          statements =
+            HallsStatements.get_random_statements_from_hall(main_hall.name, 5, [statement_id])
+
+          if Enum.empty?(statements), do: [], else: [{main_hall, statements}]
+      end
+
+    assign(socket, :random_statements_from_main_hall, random_statements_from_main_hall)
+  end
+
+  defp assign_statement_page_params(socket, params) do
+    socket
+    |> assign(:statement_page_params, params)
+    # Any filter change restarts the opinion list from the top.
+    |> assign(:opinions_page, 1)
+    |> assign(:show_synthesis, params.show_synthesis)
+    |> assign(:show_country_results, params.results == :country)
+    |> assign(:country_vote_frequencies, nil)
+    |> assign(:selected_country, params.selected_country)
+    |> assign(:country_results_filters, params.country_results_filters)
+    |> assign(:show_year_results, params.results == :year)
+    |> assign(:year_vote_frequencies, nil)
+    |> assign(:year_results_filters, params.year_results_filters)
+    |> assign(:source_filter, params.source_filter)
+    |> assign(:answer_filter, params.answer_filter)
+  end
+
+  defp patch_statement_page_params(socket, params) do
+    push_patch(socket,
+      to: ~p"/p/#{socket.assigns.statement.slug}?#{Params.to_query(params)}"
+    )
+  end
+
+  defp maybe_reload_country_vote_frequencies(%{assigns: %{show_country_results: true}} = socket) do
+    assign(
+      socket,
+      :country_vote_frequencies,
+      VoteFrequencies.get_by_country(
+        socket.assigns.statement.id,
+        socket.assigns.country_results_filters
+      )
+    )
+  end
+
+  defp maybe_reload_country_vote_frequencies(socket), do: socket
+
+  defp parse_selected_country("unknown"), do: :unknown
+  defp parse_selected_country("eu"), do: :eu
+
+  defp parse_selected_country(country) when is_binary(country) do
+    case Integer.parse(country) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
+  # Resolves the display name of the selected country from the already-loaded
+  # per-country frequencies so we can label the active filter.
+  defp assign_selected_country_name(%{assigns: %{selected_country: nil}} = socket) do
+    assign(socket, :selected_country_name, nil)
+  end
+
+  defp assign_selected_country_name(%{assigns: %{country_vote_frequencies: frequencies}} = socket)
+       when is_list(frequencies) do
+    selected = socket.assigns.selected_country
+
+    name =
+      Enum.find_value(frequencies, fn country ->
+        if country_matches?(country, selected), do: country.country_name
+      end)
+
+    assign(socket, :selected_country_name, name)
+  end
+
+  defp assign_selected_country_name(socket), do: assign(socket, :selected_country_name, nil)
+
+  defp country_matches?(%{country_id: nil}, :unknown), do: true
+  defp country_matches?(%{country_id: country_id}, selected), do: country_id == selected
+
+  defp maybe_reload_year_vote_frequencies(%{assigns: %{show_year_results: true}} = socket) do
+    assign(
+      socket,
+      :year_vote_frequencies,
+      VoteFrequencies.get_by_year(
+        socket.assigns.statement.id,
+        socket.assigns.year_results_filters
+      )
+    )
+  end
+
+  defp maybe_reload_year_vote_frequencies(socket), do: socket
+
+  defp load_statement_and_likes(socket, statement) do
+    socket
+    |> VotesLoader.load_statement_and_votes(statement.id)
+    |> assign(
+      :liked_opinion_ids,
+      Likes.get_liked_opinion_ids(socket.assigns.current_user, statement)
+    )
+  end
+end

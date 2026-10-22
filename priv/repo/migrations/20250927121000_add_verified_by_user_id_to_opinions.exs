@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddVerifiedByUserIdToOpinions do
+defmodule APX.Repo.Migrations.AddVerifiedByUserIdToOpinions do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateCountriesAndMoveAuthorCountry do
+defmodule APX.Repo.Migrations.CreateCountriesAndMoveAuthorCountry do
   use Ecto.Migration
 
   def up do

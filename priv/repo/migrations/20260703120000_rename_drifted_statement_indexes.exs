@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RenameDriftedStatementIndexes do
+defmodule APX.Repo.Migrations.RenameDriftedStatementIndexes do
   @moduledoc """
   Realign index/constraint names that drifted after `20260103171800_rename_votings_to_statements`.
 

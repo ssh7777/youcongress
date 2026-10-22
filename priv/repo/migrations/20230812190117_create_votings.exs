@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateVotings do
+defmodule APX.Repo.Migrations.CreateVotings do
   use Ecto.Migration
 
   def change do

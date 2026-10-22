@@ -8,7 +8,7 @@ defmodule Mix.Tasks.Countries.ImportGeonames do
 
   use Mix.Task
 
-  alias YouCongress.Countries.GeoNamesImporter
+  alias APX.Countries.GeoNamesImporter
 
   @shortdoc "Imports countries from GeoNames"
   @requirements ["app.start"]

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.FixObanV13Upgrade2 do
+defmodule APX.Repo.Migrations.FixObanV13Upgrade2 do
   use Ecto.Migration
 
   def up do

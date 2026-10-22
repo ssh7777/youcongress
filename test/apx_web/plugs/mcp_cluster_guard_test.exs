@@ -1,0 +1,76 @@
+defmodule APXWeb.Plugs.MCPClusterGuardTest do
+  use ExUnit.Case, async: false
+  import Plug.Conn
+  import Plug.Test
+  import Mock
+
+  alias APXWeb.Plugs.MCPClusterGuard
+
+  test "passes through when no session id is present" do
+    conn = conn(:get, "/mcp")
+    conn = MCPClusterGuard.call(conn, [])
+    refute conn.halted
+  end
+
+  test "passes through when session exists locally" do
+    with_mock Anubis.Server.Registry.Local,
+      lookup_session: fn _name, _id -> {:ok, self()} end do
+      conn =
+        conn(:get, "/mcp")
+        |> put_req_header("mcp-session-id", "local-session")
+        |> MCPClusterGuard.call([])
+
+      refute conn.halted
+    end
+  end
+
+  test "replays when session exists remotely" do
+    with_mocks([
+      {Anubis.Server.Registry.Local, [],
+       [lookup_session: fn _name, _id -> {:error, :not_found} end]},
+      {APXWeb.ClusterUtils, [],
+       [find_session_owner: fn _mod, _func, _args -> {:ok, "instance-123"} end]}
+    ]) do
+      conn =
+        conn(:get, "/mcp")
+        |> put_req_header("mcp-session-id", "remote-session")
+        |> MCPClusterGuard.call([])
+
+      assert conn.halted
+      assert {"fly-replay", "instance=instance-123"} in conn.resp_headers
+    end
+  end
+
+  test "returns 404 when session not found anywhere" do
+    with_mocks([
+      {Anubis.Server.Registry.Local, [],
+       [lookup_session: fn _name, _id -> {:error, :not_found} end]},
+      {APXWeb.ClusterUtils, [], [find_session_owner: fn _mod, _func, _args -> nil end]}
+    ]) do
+      conn =
+        conn(:get, "/mcp")
+        |> put_req_header("mcp-session-id", "unknown-session")
+        |> MCPClusterGuard.call([])
+
+      assert conn.halted
+      assert conn.status == 404
+    end
+  end
+
+  test "uses cookie when header missing" do
+    with_mocks([
+      {Anubis.Server.Registry.Local, [],
+       [lookup_session: fn _name, _id -> {:error, :not_found} end]},
+      {APXWeb.ClusterUtils, [],
+       [find_session_owner: fn _mod, _func, _args -> {:ok, "instance-456"} end]}
+    ]) do
+      conn =
+        conn(:get, "/mcp")
+        |> put_req_header("cookie", "_apx_mcp_session=cookie-session")
+        |> MCPClusterGuard.call([])
+
+      assert conn.halted
+      assert {"fly-replay", "instance=instance-456"} in conn.resp_headers
+    end
+  end
+end

@@ -1,0 +1,1069 @@
+defmodule APX.Statements.StatementQueriesTest do
+  use APX.DataCase
+
+  import APX.AuthorsFixtures
+  import APX.OpinionsFixtures
+  import APX.StatementsFixtures
+  import APX.VotesFixtures
+
+  alias APX.Opinions
+  alias APX.Opinions.Opinion
+  alias APX.OpinionsStatements
+  alias APX.Repo
+  alias APX.Statements.StatementQueries
+  alias APX.Votes
+
+  defp verify_relevance(opinion, statement, status \\ :ai_verified) do
+    opinion.id
+    |> OpinionsStatements.get_opinion_statement(statement.id)
+    |> Ecto.Changeset.change(verification_status: status)
+    |> APX.Repo.update!()
+  end
+
+  defp set_verification_pipeline(opinion, statement, vote) do
+    set_verification_pipeline(
+      opinion,
+      statement,
+      vote,
+      {:ai_verified, :ai_verified, :ai_verified}
+    )
+  end
+
+  defp set_verification_pipeline(
+         opinion,
+         statement,
+         vote,
+         {quote_status, relevance_status, vote_status}
+       ) do
+    opinion
+    |> Ecto.Changeset.change(verification_status: quote_status)
+    |> Repo.update!()
+
+    verify_relevance(opinion, statement, relevance_status)
+
+    vote
+    |> Ecto.Changeset.change(verification_status: vote_status)
+    |> Repo.update!()
+  end
+
+  describe "vote share filter" do
+    test "includes any response strictly above 80%, excludes empty and boundary cases, and paginates" do
+      qualifying =
+        for answer <- [:for, :against, :abstain] do
+          statement = statement_fixture()
+
+          for _ <- 1..5 do
+            vote_fixture(%{statement_id: statement.id, answer: answer})
+          end
+
+          other_answer = if answer == :for, do: :against, else: :for
+          vote_fixture(%{statement_id: statement.id, answer: other_answer})
+          statement.id
+        end
+
+      boundary = statement_fixture()
+      for _ <- 1..4, do: vote_fixture(%{statement_id: boundary.id, answer: :for})
+      vote_fixture(%{statement_id: boundary.id, answer: :against})
+      empty = statement_fixture()
+
+      for query <- [
+            &StatementQueries.get_opinion_cards_by_quote_date/1,
+            &StatementQueries.get_opinion_cards_by_recency/1
+          ] do
+        opts = [min_opinions: 0, agreement: "high"]
+        cards = query.(opts)
+        ids = Enum.map(cards, & &1.statement.id)
+        assert Enum.sort(ids) == Enum.sort(qualifying)
+        refute boundary.id in ids
+        refute empty.id in ids
+
+        paginated_ids =
+          for offset <- 0..2 do
+            [card] = query.(opts ++ [offset: offset, limit: 1])
+            card.statement.id
+          end
+
+        assert paginated_ids == ids
+        low_cards = query.(min_opinions: 0, agreement: "low")
+        assert Enum.map(low_cards, & &1.statement.id) == [boundary.id]
+        assert length(query.(min_opinions: 0)) == 5
+      end
+    end
+  end
+
+  describe "get_opinion_cards_by_recency/1" do
+    test "only returns statements with at least 15 opinions" do
+      statement = statement_fixture()
+      fill_statement_with_quotes(statement.id, 14)
+
+      refute Enum.any?(
+               StatementQueries.get_opinion_cards_by_recency(limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      refute Enum.any?(
+               StatementQueries.get_opinion_cards_by_top_likes(limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      refute Enum.any?(
+               StatementQueries.get_opinion_cards_by_quote_date(limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      assert Enum.any?(
+               StatementQueries.get_opinion_cards_by_recency(min_opinions: 14, limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      assert Enum.any?(
+               StatementQueries.get_opinion_cards_by_top_likes(min_opinions: 14, limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      assert Enum.any?(
+               StatementQueries.get_opinion_cards_by_quote_date(min_opinions: 14, limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      fill_statement_with_quotes(statement.id, 1)
+
+      assert Enum.any?(
+               StatementQueries.get_opinion_cards_by_recency(limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      assert Enum.any?(
+               StatementQueries.get_opinion_cards_by_top_likes(limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      assert Enum.any?(
+               StatementQueries.get_opinion_cards_by_quote_date(limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+    end
+
+    test "min_opinions zero includes statements without opinions" do
+      statement = statement_fixture()
+
+      refute Enum.any?(
+               StatementQueries.get_opinion_cards_by_recency(limit: 20),
+               &(&1.statement.id == statement.id)
+             )
+
+      assert [
+               %{statement: %{id: statement_id}, vote: nil}
+             ] = StatementQueries.get_opinion_cards_by_recency(min_opinions: 0, limit: 20)
+
+      assert statement_id == statement.id
+
+      assert [
+               %{statement: %{id: statement_id}, vote: nil}
+             ] = StatementQueries.get_opinion_cards_by_quote_date(min_opinions: 0, limit: 20)
+
+      assert statement_id == statement.id
+
+      assert [
+               %{statement: %{id: statement_id}, vote: nil}
+             ] = StatementQueries.get_opinion_cards_by_top_likes(min_opinions: 0, limit: 20)
+
+      assert statement_id == statement.id
+    end
+
+    test "returns each quote only once even if multiple votes point to it" do
+      statement = statement_fixture()
+      opinion_author = author_fixture()
+
+      opinion =
+        opinion_fixture(%{
+          author_id: opinion_author.id,
+          twin: false
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(opinion, statement.id)
+
+      first_vote_author = author_fixture()
+
+      {:ok, _} =
+        Votes.create_vote(%{
+          author_id: first_vote_author.id,
+          statement_id: statement.id,
+          opinion_id: opinion.id,
+          answer: :for
+        })
+
+      second_vote_author = author_fixture()
+
+      {:ok, _} =
+        Votes.create_vote(%{
+          author_id: second_vote_author.id,
+          statement_id: statement.id,
+          opinion_id: opinion.id,
+          answer: :for
+        })
+
+      fill_statement_with_quotes(statement.id)
+
+      cards = StatementQueries.get_opinion_cards_by_recency(limit: 20)
+
+      # The statement should appear exactly once despite multiple votes
+      matching_cards =
+        Enum.filter(cards, fn card ->
+          card.statement.id == statement.id
+        end)
+
+      assert length(matching_cards) == 1
+    end
+
+    test "uses the newest positive verified opinion before newer disputed opinions" do
+      statement = statement_fixture()
+      fill_statement_with_quotes(statement.id, 18)
+
+      verified_author = author_fixture()
+
+      verified_opinion =
+        opinion_fixture(%{
+          author_id: verified_author.id,
+          content: "Older verified home quote",
+          verification_status: :ai_verified
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(verified_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: verified_author.id,
+        opinion_id: verified_opinion.id
+      })
+
+      disputed_author = author_fixture()
+
+      disputed_opinion =
+        opinion_fixture(%{
+          author_id: disputed_author.id,
+          content: "Newer disputed home quote",
+          verification_status: :disputed
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(disputed_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: disputed_author.id,
+        opinion_id: disputed_opinion.id
+      })
+
+      [card] =
+        StatementQueries.get_opinion_cards_by_recency(limit: 20)
+        |> Enum.filter(&(&1.statement.id == statement.id))
+
+      assert card.vote.opinion.id == verified_opinion.id
+    end
+
+    test "uses aggregate verified opinions before quote-only verified opinions" do
+      statement = statement_fixture()
+      fill_statement_with_quotes(statement.id, 18)
+
+      aggregate_author = author_fixture()
+
+      aggregate_opinion =
+        opinion_fixture(%{
+          author_id: aggregate_author.id,
+          content: "Aggregate verified home quote",
+          verification_status: :ai_verified,
+          likes_count: 0
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(aggregate_opinion, statement.id)
+      verify_relevance(aggregate_opinion, statement)
+
+      aggregate_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: aggregate_author.id,
+          opinion_id: aggregate_opinion.id,
+          verification_status: :ai_verified
+        })
+
+      quote_only_author = author_fixture()
+
+      quote_only_opinion =
+        opinion_fixture(%{
+          author_id: quote_only_author.id,
+          content: "Newer quote-only verified home quote",
+          verification_status: :verified,
+          likes_count: 10
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(quote_only_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: quote_only_author.id,
+        opinion_id: quote_only_opinion.id
+      })
+
+      [card] =
+        StatementQueries.get_opinion_cards_by_recency(limit: 20)
+        |> Enum.filter(&(&1.statement.id == statement.id))
+
+      assert card.vote.id == aggregate_vote.id
+    end
+
+    test "uses the most recently added quote regardless of quote date" do
+      statement = statement_fixture()
+      fill_statement_with_quotes(statement.id, 18)
+
+      older_author = author_fixture()
+
+      older_opinion =
+        opinion_fixture(%{
+          author_id: older_author.id,
+          content: "Older high-like verified home quote",
+          verification_status: :verified,
+          likes_count: 25,
+          date: ~D[2025-01-01],
+          date_precision: :year
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(older_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: older_author.id,
+        opinion_id: older_opinion.id
+      })
+
+      newer_author = author_fixture()
+
+      newer_opinion =
+        opinion_fixture(%{
+          author_id: newer_author.id,
+          content: "Newer low-like verified home quote",
+          verification_status: :ai_verified,
+          likes_count: 0,
+          date: ~D[2020-01-01],
+          date_precision: :year
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newer_opinion, statement.id)
+
+      newer_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: newer_author.id,
+          opinion_id: newer_opinion.id
+        })
+
+      [card] =
+        StatementQueries.get_opinion_cards_by_recency(limit: 20)
+        |> Enum.filter(&(&1.statement.id == statement.id))
+
+      assert card.vote.id == newer_vote.id
+    end
+
+    test "orders statements by newest opinion id regardless of quote date" do
+      older_statement = statement_fixture()
+      fill_statement_with_quotes(older_statement.id, 19)
+      older_author = author_fixture()
+
+      older_opinion =
+        opinion_fixture(%{
+          author_id: older_author.id,
+          verification_status: :ai_verified,
+          date: ~D[2026-06-18],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(older_opinion, older_statement.id)
+      verify_relevance(older_opinion, older_statement)
+
+      vote_fixture(%{
+        statement_id: older_statement.id,
+        author_id: older_author.id,
+        opinion_id: older_opinion.id,
+        verification_status: :ai_verified
+      })
+
+      newer_statement = statement_fixture()
+      fill_statement_with_quotes(newer_statement.id, 19)
+      newer_author = author_fixture()
+
+      newer_opinion =
+        opinion_fixture(%{
+          author_id: newer_author.id,
+          verification_status: :ai_verified,
+          date: ~D[2020-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newer_opinion, newer_statement.id)
+      verify_relevance(newer_opinion, newer_statement)
+
+      vote_fixture(%{
+        statement_id: newer_statement.id,
+        author_id: newer_author.id,
+        opinion_id: newer_opinion.id,
+        verification_status: :ai_verified
+      })
+
+      statement_ids =
+        StatementQueries.get_opinion_cards_by_recency(limit: 20)
+        |> Enum.map(& &1.statement.id)
+
+      assert statement_ids == [newer_statement.id, older_statement.id]
+    end
+  end
+
+  describe "get_opinion_cards_by_quote_date/1" do
+    test "orders statements by newest quote date instead of newest opinion id" do
+      newer_date_statement = statement_fixture()
+      fill_statement_with_quotes(newer_date_statement.id, 19)
+      newer_date_author = author_fixture()
+
+      newer_date_opinion =
+        opinion_fixture(%{
+          author_id: newer_date_author.id,
+          verification_status: :ai_verified,
+          date: ~D[2026-06-18],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newer_date_opinion, newer_date_statement.id)
+      verify_relevance(newer_date_opinion, newer_date_statement)
+
+      vote_fixture(%{
+        statement_id: newer_date_statement.id,
+        author_id: newer_date_author.id,
+        opinion_id: newer_date_opinion.id,
+        verification_status: :ai_verified
+      })
+
+      older_date_statement = statement_fixture()
+      fill_statement_with_quotes(older_date_statement.id, 19)
+      older_date_author = author_fixture()
+
+      older_date_opinion =
+        opinion_fixture(%{
+          author_id: older_date_author.id,
+          verification_status: :ai_verified,
+          date: ~D[2020-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(older_date_opinion, older_date_statement.id)
+      verify_relevance(older_date_opinion, older_date_statement)
+
+      vote_fixture(%{
+        statement_id: older_date_statement.id,
+        author_id: older_date_author.id,
+        opinion_id: older_date_opinion.id,
+        verification_status: :ai_verified
+      })
+
+      statement_ids =
+        StatementQueries.get_opinion_cards_by_quote_date(limit: 20)
+        |> Enum.map(& &1.statement.id)
+
+      assert statement_ids == [newer_date_statement.id, older_date_statement.id]
+    end
+
+    test "places undated quotes after dated quotes" do
+      dated_statement = statement_fixture()
+      fill_statement_with_quotes(dated_statement.id, 19)
+      dated_author = author_fixture()
+
+      dated_opinion =
+        opinion_fixture(%{
+          author_id: dated_author.id,
+          verification_status: :ai_verified,
+          date: ~D[2020-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(dated_opinion, dated_statement.id)
+      verify_relevance(dated_opinion, dated_statement)
+
+      vote_fixture(%{
+        statement_id: dated_statement.id,
+        author_id: dated_author.id,
+        opinion_id: dated_opinion.id,
+        verification_status: :ai_verified
+      })
+
+      undated_statement = statement_fixture()
+      fill_statement_with_quotes(undated_statement.id, 19)
+      undated_author = author_fixture()
+
+      undated_opinion =
+        opinion_fixture(%{
+          author_id: undated_author.id,
+          verification_status: :ai_verified
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(undated_opinion, undated_statement.id)
+      verify_relevance(undated_opinion, undated_statement)
+
+      vote_fixture(%{
+        statement_id: undated_statement.id,
+        author_id: undated_author.id,
+        opinion_id: undated_opinion.id,
+        verification_status: :ai_verified
+      })
+
+      statement_ids =
+        StatementQueries.get_opinion_cards_by_quote_date(limit: 20)
+        |> Enum.map(& &1.statement.id)
+
+      assert statement_ids == [dated_statement.id, undated_statement.id]
+    end
+  end
+
+  describe "get_newest_opinion_cards/1" do
+    test "orders statements by the date of the newest opinion" do
+      older_statement = statement_fixture()
+      older_author = author_fixture()
+
+      older_opinion =
+        opinion_fixture(%{
+          author_id: older_author.id,
+          date: ~D[2020-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(older_opinion, older_statement.id)
+
+      older_vote =
+        vote_fixture(%{
+          statement_id: older_statement.id,
+          author_id: older_author.id,
+          opinion_id: older_opinion.id,
+          answer: :for
+        })
+
+      set_verification_pipeline(older_opinion, older_statement, older_vote)
+
+      newer_statement = statement_fixture()
+      newer_author = author_fixture()
+
+      newer_opinion =
+        opinion_fixture(%{
+          author_id: newer_author.id,
+          date: ~D[2026-06-18],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newer_opinion, newer_statement.id)
+
+      newer_vote =
+        vote_fixture(%{
+          statement_id: newer_statement.id,
+          author_id: newer_author.id,
+          opinion_id: newer_opinion.id,
+          answer: :for
+        })
+
+      set_verification_pipeline(newer_opinion, newer_statement, newer_vote)
+
+      cards = StatementQueries.get_newest_opinion_cards(limit: 20)
+
+      assert Enum.map(cards, & &1.statement.id) == [newer_statement.id, older_statement.id]
+    end
+
+    test "features only the newest opinion per statement regardless of answer" do
+      statement = statement_fixture()
+      for_author = author_fixture()
+      against_author = author_fixture()
+      abstain_author = author_fixture()
+
+      for_opinion =
+        opinion_fixture(%{
+          author_id: for_author.id,
+          content: "Older for opinion",
+          date: ~D[2024-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(for_opinion, statement.id)
+
+      for_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: for_author.id,
+          opinion_id: for_opinion.id,
+          answer: :for
+        })
+
+      set_verification_pipeline(for_opinion, statement, for_vote)
+
+      against_opinion =
+        opinion_fixture(%{
+          author_id: against_author.id,
+          content: "Older against opinion",
+          date: ~D[2024-02-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(against_opinion, statement.id)
+
+      against_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: against_author.id,
+          opinion_id: against_opinion.id,
+          answer: :against
+        })
+
+      set_verification_pipeline(against_opinion, statement, against_vote)
+
+      newest_opinion =
+        opinion_fixture(%{
+          author_id: abstain_author.id,
+          content: "Newest abstain opinion",
+          date: ~D[2026-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newest_opinion, statement.id)
+
+      newest_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: abstain_author.id,
+          opinion_id: newest_opinion.id,
+          answer: :abstain
+        })
+
+      set_verification_pipeline(newest_opinion, statement, newest_vote)
+
+      [card] = StatementQueries.get_newest_opinion_cards(limit: 20)
+
+      assert card.statement.id == statement.id
+      assert card.vote.id == newest_vote.id
+      assert card.vote.opinion.id == newest_opinion.id
+      assert card.vote.answer == :abstain
+    end
+
+    test "can order and select each statement's opinion by when it was added" do
+      first_statement = statement_fixture()
+      first_author = author_fixture()
+
+      newest_quote =
+        opinion_fixture(%{
+          author_id: first_author.id,
+          content: "Newest quote date, added first",
+          date: ~D[2026-08-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newest_quote, first_statement.id)
+
+      first_vote =
+        vote_fixture(%{
+          statement_id: first_statement.id,
+          author_id: first_author.id,
+          opinion_id: newest_quote.id,
+          answer: :for
+        })
+
+      set_verification_pipeline(newest_quote, first_statement, first_vote)
+
+      second_statement = statement_fixture()
+      second_author = author_fixture()
+
+      most_recently_added =
+        opinion_fixture(%{
+          author_id: second_author.id,
+          content: "Older quote date, added last",
+          date: ~D[2020-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(most_recently_added, second_statement.id)
+
+      second_vote =
+        vote_fixture(%{
+          statement_id: second_statement.id,
+          author_id: second_author.id,
+          opinion_id: most_recently_added.id,
+          answer: :against
+        })
+
+      set_verification_pipeline(most_recently_added, second_statement, second_vote)
+
+      older_inserted_at = ~N[2026-01-01 00:00:00]
+      newer_inserted_at = ~N[2026-02-01 00:00:00]
+
+      from(o in Opinion, where: o.id == ^newest_quote.id)
+      |> Repo.update_all(set: [inserted_at: older_inserted_at])
+
+      from(o in Opinion, where: o.id == ^most_recently_added.id)
+      |> Repo.update_all(set: [inserted_at: newer_inserted_at])
+
+      cards = StatementQueries.get_newest_opinion_cards(order_by: :added, limit: 20)
+
+      assert Enum.map(cards, & &1.statement.id) == [second_statement.id, first_statement.id]
+    end
+
+    test "requires positive quote, relevance, and vote verification in every order" do
+      statement = statement_fixture()
+      verified_author = author_fixture()
+
+      verified_opinion =
+        opinion_fixture(%{
+          author_id: verified_author.id,
+          content: "Fully verified older quote",
+          date: ~D[2020-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(verified_opinion, statement.id)
+
+      verified_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: verified_author.id,
+          opinion_id: verified_opinion.id,
+          answer: :for
+        })
+
+      set_verification_pipeline(
+        verified_opinion,
+        statement,
+        verified_vote,
+        {:verified, :ai_verified, :endorsed}
+      )
+
+      unverified_author = author_fixture()
+
+      unverified_newer_opinion =
+        opinion_fixture(%{
+          author_id: unverified_author.id,
+          content: "Unverified newer quote",
+          date: ~D[2026-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(unverified_newer_opinion, statement.id)
+
+      unverified_newer_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: unverified_author.id,
+          opinion_id: unverified_newer_opinion.id,
+          answer: :against
+        })
+
+      set_verification_pipeline(
+        unverified_newer_opinion,
+        statement,
+        unverified_newer_vote,
+        {nil, :ai_verified, :ai_verified}
+      )
+
+      pending_relevance_statement = statement_fixture()
+      pending_relevance_author = author_fixture()
+      pending_relevance_opinion = opinion_fixture(%{author_id: pending_relevance_author.id})
+
+      {:ok, _} =
+        Opinions.add_opinion_to_statement(
+          pending_relevance_opinion,
+          pending_relevance_statement.id
+        )
+
+      pending_relevance_vote =
+        vote_fixture(%{
+          statement_id: pending_relevance_statement.id,
+          author_id: pending_relevance_author.id,
+          opinion_id: pending_relevance_opinion.id
+        })
+
+      set_verification_pipeline(
+        pending_relevance_opinion,
+        pending_relevance_statement,
+        pending_relevance_vote,
+        {:ai_verified, nil, :ai_verified}
+      )
+
+      pending_vote_statement = statement_fixture()
+      pending_vote_author = author_fixture()
+      pending_vote_opinion = opinion_fixture(%{author_id: pending_vote_author.id})
+
+      {:ok, _} =
+        Opinions.add_opinion_to_statement(pending_vote_opinion, pending_vote_statement.id)
+
+      pending_vote =
+        vote_fixture(%{
+          statement_id: pending_vote_statement.id,
+          author_id: pending_vote_author.id,
+          opinion_id: pending_vote_opinion.id
+        })
+
+      set_verification_pipeline(
+        pending_vote_opinion,
+        pending_vote_statement,
+        pending_vote,
+        {:ai_verified, :ai_verified, nil}
+      )
+
+      for order <- [:quote_date, :added] do
+        assert [%{statement: %{id: statement_id}, vote: %{id: vote_id}}] =
+                 StatementQueries.get_newest_opinion_cards(order_by: order, limit: 20)
+
+        assert statement_id == statement.id
+        assert vote_id == verified_vote.id
+      end
+    end
+
+    test "skips statements without opinion votes" do
+      statement_fixture()
+
+      assert StatementQueries.get_newest_opinion_cards(limit: 20) == []
+    end
+
+    test "paginates with offset and limit" do
+      Enum.each(1..3, fn i ->
+        statement = statement_fixture()
+        author = author_fixture()
+
+        opinion =
+          opinion_fixture(%{
+            author_id: author.id,
+            date: Date.add(~D[2026-01-01], i),
+            date_precision: :day
+          })
+
+        {:ok, _} = Opinions.add_opinion_to_statement(opinion, statement.id)
+
+        vote =
+          vote_fixture(%{
+            statement_id: statement.id,
+            author_id: author.id,
+            opinion_id: opinion.id,
+            answer: :for
+          })
+
+        set_verification_pipeline(opinion, statement, vote)
+      end)
+
+      all_cards = StatementQueries.get_newest_opinion_cards(limit: 20)
+      assert length(all_cards) == 3
+
+      first_two = StatementQueries.get_newest_opinion_cards(limit: 2)
+
+      assert Enum.map(first_two, & &1.statement.id) ==
+               Enum.map(Enum.take(all_cards, 2), & &1.statement.id)
+
+      third = StatementQueries.get_newest_opinion_cards(offset: 2, limit: 2)
+      assert Enum.map(third, & &1.statement.id) == [Enum.at(all_cards, 2).statement.id]
+    end
+  end
+
+  describe "get_top_votes_by_answer_for_statements/2" do
+    test "uses quote dates in quote date mode" do
+      statement = statement_fixture()
+
+      newer_date_author = author_fixture()
+
+      newer_date_opinion =
+        opinion_fixture(%{
+          author_id: newer_date_author.id,
+          content: "Newer dated answer quote",
+          verification_status: :verified,
+          date: ~D[2026-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newer_date_opinion, statement.id)
+
+      newer_date_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: newer_date_author.id,
+          opinion_id: newer_date_opinion.id,
+          answer: :for
+        })
+
+      older_date_author = author_fixture()
+
+      older_date_opinion =
+        opinion_fixture(%{
+          author_id: older_date_author.id,
+          content: "Older but later added answer quote",
+          verification_status: :verified,
+          date: ~D[2020-01-01],
+          date_precision: :day
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(older_date_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: older_date_author.id,
+        opinion_id: older_date_opinion.id,
+        answer: :for
+      })
+
+      votes_by_answer =
+        StatementQueries.get_top_votes_by_answer_for_statements([statement.id],
+          order_by: :quote_date
+        )
+
+      assert votes_by_answer[statement.id][:for].id == newer_date_vote.id
+    end
+
+    test "uses positive verified opinions before newer disputed opinions in recency mode" do
+      statement = statement_fixture()
+
+      verified_author = author_fixture()
+
+      verified_opinion =
+        opinion_fixture(%{
+          author_id: verified_author.id,
+          content: "Older verified answer quote",
+          verification_status: :verified
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(verified_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: verified_author.id,
+        opinion_id: verified_opinion.id,
+        answer: :for
+      })
+
+      disputed_author = author_fixture()
+
+      disputed_opinion =
+        opinion_fixture(%{
+          author_id: disputed_author.id,
+          content: "Newer disputed answer quote",
+          verification_status: :disputed
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(disputed_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: disputed_author.id,
+        opinion_id: disputed_opinion.id,
+        answer: :for
+      })
+
+      votes_by_answer =
+        StatementQueries.get_top_votes_by_answer_for_statements([statement.id],
+          order_by: :recency
+        )
+
+      assert votes_by_answer[statement.id][:for].opinion.id == verified_opinion.id
+    end
+
+    test "uses aggregate verified opinions before quote-only verified opinions" do
+      statement = statement_fixture()
+
+      aggregate_author = author_fixture()
+
+      aggregate_opinion =
+        opinion_fixture(%{
+          author_id: aggregate_author.id,
+          content: "Aggregate verified answer quote",
+          verification_status: :ai_verified,
+          likes_count: 0
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(aggregate_opinion, statement.id)
+      verify_relevance(aggregate_opinion, statement)
+
+      aggregate_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: aggregate_author.id,
+          opinion_id: aggregate_opinion.id,
+          answer: :for,
+          verification_status: :ai_verified
+        })
+
+      quote_only_author = author_fixture()
+
+      quote_only_opinion =
+        opinion_fixture(%{
+          author_id: quote_only_author.id,
+          content: "Newer quote-only verified answer quote",
+          verification_status: :verified,
+          likes_count: 10
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(quote_only_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: quote_only_author.id,
+        opinion_id: quote_only_opinion.id,
+        answer: :for
+      })
+
+      votes_by_answer =
+        StatementQueries.get_top_votes_by_answer_for_statements([statement.id],
+          order_by: :recency
+        )
+
+      assert votes_by_answer[statement.id][:for].id == aggregate_vote.id
+    end
+
+    test "uses the most recently added quote regardless of quote date" do
+      statement = statement_fixture()
+
+      older_author = author_fixture()
+
+      older_opinion =
+        opinion_fixture(%{
+          author_id: older_author.id,
+          content: "Older high-like verified answer quote",
+          verification_status: :verified,
+          likes_count: 25,
+          date: ~D[2025-01-01],
+          date_precision: :year
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(older_opinion, statement.id)
+
+      vote_fixture(%{
+        statement_id: statement.id,
+        author_id: older_author.id,
+        opinion_id: older_opinion.id,
+        answer: :for
+      })
+
+      newer_author = author_fixture()
+
+      newer_opinion =
+        opinion_fixture(%{
+          author_id: newer_author.id,
+          content: "Newer low-like verified answer quote",
+          verification_status: :ai_verified,
+          likes_count: 0,
+          date: ~D[2020-01-01],
+          date_precision: :year
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(newer_opinion, statement.id)
+
+      newer_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: newer_author.id,
+          opinion_id: newer_opinion.id,
+          answer: :for
+        })
+
+      votes_by_answer =
+        StatementQueries.get_top_votes_by_answer_for_statements([statement.id],
+          order_by: :recency
+        )
+
+      assert votes_by_answer[statement.id][:for].id == newer_vote.id
+    end
+  end
+end

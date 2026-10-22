@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.ChangeVotesOpinionIdConstraintToCascade do
+defmodule APX.Repo.Migrations.ChangeVotesOpinionIdConstraintToCascade do
   use Ecto.Migration
 
   def up do

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddPublicFigureToAuthors do
+defmodule APX.Repo.Migrations.AddPublicFigureToAuthors do
   use Ecto.Migration
 
   def change do

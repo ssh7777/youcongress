@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddDescriptionToHalls do
+defmodule APX.Repo.Migrations.AddDescriptionToHalls do
   use Ecto.Migration
 
   def change do

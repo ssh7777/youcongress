@@ -6,6 +6,7 @@ const fs = require("fs")
 const path = require("path")
 
 module.exports = {
+  darkMode: "class",
   content: [
     "./js/**/*.js",
     "../lib/*_web.ex",
@@ -38,8 +39,21 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        brand: "#C73E00",
-      }
+        brand: "#00E5FF",
+        apx: {
+          background: "#090D16",
+          surface: "#111827",
+          cyan: "#00E5FF",
+          blue: "#3B82F6",
+          text: "#F8FAFC",
+          muted: "#94A3B8",
+          line: "#263247",
+        },
+      },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+      },
     },
   },
   plugins: [

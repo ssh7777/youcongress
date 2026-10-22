@@ -1,0 +1,275 @@
+defmodule APXWeb.QuoteReviewLive.Index do
+  use APXWeb, :live_view
+
+  alias APX.Opinions
+  alias APX.Opinions.Opinion
+  alias APX.OpinionsStatements
+  alias APX.Verifications
+  alias APX.VoteVerifications
+  alias APX.Halls
+  import APXWeb.Tools.TimeAgo
+
+  @impl true
+  def mount(_params, session, socket) do
+    socket = assign_current_user(socket, session["user_token"])
+
+    halls_with_pending_quotes = Halls.list_halls_with_pending_quotes()
+
+    {:ok,
+     socket
+     |> assign(:page_title, "Review Quotes")
+     |> assign(:pending_quotes, [])
+     |> assign(:page, 1)
+     |> assign(:per_page, 20)
+     |> assign(:has_more, true)
+     |> assign(:editing_quote_id, nil)
+     |> assign(:verifying, nil)
+     |> assign(:sort_by, :desc)
+     |> assign(:selected_hall, nil)
+     |> assign(:halls, halls_with_pending_quotes)}
+  end
+
+  @impl true
+  def handle_params(_params, _url, socket) do
+    {:noreply, load_pending_quotes(socket, 1)}
+  end
+
+  @impl true
+  def handle_event("load-more", _params, socket) do
+    {:noreply, load_pending_quotes(socket, socket.assigns.page + 1)}
+  end
+
+  def handle_event("pick-status", %{"id" => id, "status" => status}, socket) do
+    {:noreply,
+     assign(socket, :verifying, %{
+       opinion_id: String.to_integer(id),
+       status: status,
+       comment: ""
+     })}
+  end
+
+  def handle_event("cancel-verify", _, socket) do
+    {:noreply, assign(socket, :verifying, nil)}
+  end
+
+  def handle_event("update-verify-comment", %{"key" => "Enter", "value" => value}, socket) do
+    socket = assign(socket, :verifying, %{socket.assigns.verifying | comment: value})
+    handle_event("confirm-status", %{}, socket)
+  end
+
+  def handle_event("update-verify-comment", %{"value" => value}, socket) do
+    {:noreply, assign(socket, :verifying, %{socket.assigns.verifying | comment: value})}
+  end
+
+  def handle_event("confirm-status", _, socket) do
+    %{opinion_id: opinion_id, status: status, comment: comment} = socket.assigns.verifying
+    user = socket.assigns.current_user
+
+    status_atom = String.to_existing_atom(status)
+    comment = if comment == "", do: String.capitalize(status), else: comment
+
+    attrs = %{
+      opinion_id: opinion_id,
+      status: status_atom,
+      comment: comment
+    }
+
+    case Verifications.create_verification(user, attrs) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(:verifying, nil)
+         |> remove_from_list(opinion_id)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to set verification status")}
+    end
+  end
+
+  def handle_event("delete", %{"id" => id}, socket) do
+    opinion = Opinions.get_opinion!(String.to_integer(id))
+
+    case Opinions.delete_opinion(opinion) do
+      {:ok, _} ->
+        {:noreply, remove_from_list(socket, opinion.id)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete quote")}
+    end
+  end
+
+  def handle_event("edit", %{"id" => id}, socket) do
+    quote_id = String.to_integer(id)
+    {:noreply, assign(socket, :editing_quote_id, quote_id)}
+  end
+
+  def handle_event("toggle-sort", _params, socket) do
+    new_sort_by = if socket.assigns.sort_by == :desc, do: :asc, else: :desc
+
+    {:noreply,
+     socket
+     |> assign(:sort_by, new_sort_by)
+     |> assign(:pending_quotes, [])
+     |> assign(:page, 1)
+     |> load_pending_quotes(1)}
+  end
+
+  def handle_event("filter-hall", params, socket) do
+    hall_name = params["hall"] || params["value"]
+
+    selected_hall = if hall_name == "", do: nil, else: hall_name
+
+    {:noreply,
+     socket
+     |> assign(:selected_hall, selected_hall)
+     |> assign(:pending_quotes, [])
+     |> assign(:page, 1)
+     |> load_pending_quotes(1)}
+  end
+
+  @impl true
+  def handle_info({:opinion_updated, updated_opinion}, socket) do
+    # Update the quote in the list
+    updated_quotes = update_quote_in_list(socket.assigns.pending_quotes, updated_opinion)
+
+    {:noreply,
+     socket
+     |> assign(:pending_quotes, updated_quotes)
+     |> assign(:editing_quote_id, nil)
+     |> put_flash(:info, "Quote updated successfully")}
+  end
+
+  def handle_info({:opinion_update_error, _changeset}, socket) do
+    {:noreply, put_flash(socket, :error, "Failed to update quote")}
+  end
+
+  def handle_info({:opinion_update_forbidden, _opinion_id}, socket) do
+    {:noreply, put_flash(socket, :error, "You are not allowed to edit this quote.")}
+  end
+
+  def handle_info(:opinion_edit_cancelled, socket) do
+    {:noreply, assign(socket, :editing_quote_id, nil)}
+  end
+
+  # Relevance/vote badges update themselves optimistically; nothing else to do.
+  def handle_info({:verification_saved, _subject_type, _id}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_info({:put_flash, kind, message}, socket) do
+    {:noreply, put_flash(socket, kind, message)}
+  end
+
+  defp remove_from_list(socket, id) do
+    list = Enum.reject(socket.assigns.pending_quotes, &(&1.id == id))
+    assign(socket, :pending_quotes, list)
+  end
+
+  defp load_pending_quotes(socket, page) do
+    %{assigns: %{per_page: per_page, sort_by: sort_by, selected_hall: selected_hall}} = socket
+    offset = (page - 1) * per_page
+
+    opts = [
+      only_quotes: true,
+      is_verified: false,
+      order_by: [{sort_by, :id}],
+      limit: per_page,
+      offset: offset,
+      preload: [:author, :statements]
+    ]
+
+    opts = if selected_hall, do: Keyword.put(opts, :hall_name, selected_hall), else: opts
+
+    quotes = Opinions.list_opinions(opts)
+
+    # Load author votes for each quote's statements
+    quotes_with_votes = load_author_votes_for_quotes(quotes)
+
+    has_more = length(quotes) == per_page
+
+    socket
+    |> assign(
+      :pending_quotes,
+      if(page == 1,
+        do: quotes_with_votes,
+        else: socket.assigns.pending_quotes ++ quotes_with_votes
+      )
+    )
+    |> assign(:page, page)
+    |> assign(:has_more, has_more)
+  end
+
+  defp load_author_votes_for_quotes(quotes) do
+    Enum.map(quotes, fn quote ->
+      if quote.author && quote.statements && quote.statements != [] do
+        statement_ids = Enum.map(quote.statements, & &1.id)
+
+        # Get author's votes for these statements
+        votes =
+          APX.Votes.list_votes(
+            author_ids: [quote.author.id],
+            statement_ids: statement_ids,
+            preload: []
+          )
+
+        # Create a map of statement_id -> vote for easy lookup
+        votes_by_statement = Map.new(votes, fn vote -> {vote.statement_id, vote} end)
+
+        # Relevance join rows (statement_id -> opinion_statement) for this quote
+        opinion_statements_by_statement =
+          OpinionsStatements.get_opinion_statements_by_statement_ids(quote.id, statement_ids)
+
+        # Add votes and the relevance link to each statement
+        statements_with_votes =
+          Enum.map(quote.statements, fn statement ->
+            author_vote =
+              votes_by_statement
+              |> Map.get(statement.id)
+              |> vote_with_quote_status(quote.id)
+
+            statement
+            |> Map.put(:author_vote, author_vote)
+            |> Map.put(
+              :opinion_statement,
+              Map.get(opinion_statements_by_statement, statement.id)
+            )
+          end)
+
+        Map.put(quote, :statements, statements_with_votes)
+      else
+        quote
+      end
+    end)
+  end
+
+  defp update_quote_in_list(quotes, updated_quote) do
+    # Reload the quote with all necessary preloads to get updated votes
+    reloaded_quote = Opinions.get_opinion!(updated_quote.id, preload: [:author, :statements])
+    quotes_with_votes = load_author_votes_for_quotes([reloaded_quote])
+    updated_quote_with_votes = List.first(quotes_with_votes)
+
+    Enum.map(quotes, fn quote ->
+      if quote.id == updated_quote.id do
+        updated_quote_with_votes
+      else
+        quote
+      end
+    end)
+  end
+
+  defp vote_with_quote_status(nil, _opinion_id), do: nil
+
+  defp vote_with_quote_status(vote, opinion_id) do
+    %{vote | verification_status: VoteVerifications.status_for_vote_opinion(vote.id, opinion_id)}
+  end
+
+  # Helper function to get styling classes based on vote response
+  defp get_vote_style(response) do
+    case response do
+      :for -> "bg-green-700 text-white"
+      :abstain -> "bg-blue-600 text-white"
+      :against -> "bg-red-600 text-white"
+      _ -> "bg-gray-100 text-gray-600"
+    end
+  end
+end

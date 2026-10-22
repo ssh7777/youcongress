@@ -1,90 +1,81 @@
-# YouCongress
+# APX — Policy Analytics Platform
 
-[YouCongress.org](https://youcongress.org) is a non-profit, open-source and open-data platform for building source-grounded knowledge bases around hard public questions. It has two connected but distinct layers:
+APX is a Phoenix application for organizing source-linked public positions, policy proposals, voting and delegation, and curated policy intelligence. It is intended to make evidence and disagreement easier to inspect; it does not claim to represent all experts or the public, and it does not make binding decisions.
 
-- **Data layer:** a provenance-preserving ingestion and structure layer that turns public discourse into inspectable quote–claim records.
-- **Participation layer (beta):** a liquid-democracy interface for direct votes, optional delegation, and policy discussion.
+## What is included
 
-The project’s first large focus is AI governance, safety, regulation, labour impacts, compute governance, and international coordination. The data model and workflow are designed to generalize to any question where it matters who said what, in what source, and how that passage bears on a claim or proposal.
+- **Policy proposals and source-linked positions** — public statements can be connected to attributed quotations, source URLs, verification states, and topic areas.
+- **Liquid-democracy participation** — participants can vote directly or delegate. Direct votes take precedence; otherwise the stored result follows the existing delegation rules. The application’s voting logic and business schema remain unchanged by the APX rebrand.
+- **Verification workflows** — distinguish quote authenticity, relevance to a proposal, and inferred stance. Automated status is not a universal guarantee of truth.
+- **Policy & cyber intelligence** — `/intelligence` curates public RSS/Atom metadata from configured feeds. Deterministic rules filter headlines and excerpts, assign heuristic impact labels, create short briefs, and suggest links to APX proposals. This is not full-text AI analysis or an official threat assessment. Every item links to its publisher.
+- **Discovery metadata** — `/robots.txt`, `/sitemap.xml`, `/llms.txt`, canonical URLs, and JSON-LD for public intelligence pages.
+- **MCP tools** — `/mcp` and `/mcp-tools` expose the existing tool interface.
 
-## The data layer
+APX is a policy analytics project. This repository does not establish a registered non-profit, government service, official standard, certification authority, or endorsement by any institution.
 
-YouCongress is not a truth-scoring system, an expert-representativeness survey, or a measure of how much evidential weight a speaker deserves. It is a reusable substrate for research and assessment: humans and downstream systems can inspect, challenge, correct, and extend records without having to repeat the entire ingestion process.
+## Technology
 
-Each sourced quote record keeps the original material separate from derived annotations. Where available, it includes:
+- Elixir `~> 1.18` / OTP
+- Phoenix, LiveView, Ecto, PostgreSQL
+- Oban for background jobs and scheduled feed ingestion
+- Tailwind and esbuild for assets
 
-- the verbatim quotation, attributed author, original source, publication date, and date precision;
-- one or more normalized statements—claims or policy proposals—to which the quotation is relevant;
-- a passage-level stance on each linked statement: **For**, **Abstain/unclear**, or **Against**;
-- independent verification histories for source fidelity, quote–statement relevance, and stance.
+## Local development
 
-The quote remains the primary artifact. A reviewer can revise a relevance link or stance label without rewriting the quote or losing its provenance. A quote may link to several statements; exports therefore use one row per quote–statement link.
+Install a compatible Elixir/OTP toolchain, PostgreSQL, and Node.js/npm. Then:
 
-### Ingestion and verification
-
-The application workflow and larger scheduled coding-agent jobs converge on the same records. Both use distinct passes for discovery, attribution, statement linking, stance inference, source-fidelity checking, relevance checking, and stance checking:
-
-> source discovery → quote extraction and attribution → statement linking + stance inference → source-fidelity check → quote–statement relevance check → stance check → export
-
-Verification is progressive: a stance cannot be verified before the quote and its relation to the statement have passed their respective checks. “AI verified” means an automated verifier found support for the annotation; it is not blinded human validation, and agreement among automated passes is not independent evidence. Humans can review records in the UI, and authors can claim profiles through X to update or delete their quotations. See the [agent workflow guide](agents-workflows/README.md) for implementation detail.
-
-### Access and reuse
-
-- Download the [complete CSV dataset](https://youcongress.org/dataset.csv), or export sourced quotes from an individual statement page. The complete export includes statements with at least three verified quotes.
-- Browse and query public records through the no-key [MCP endpoint](https://youcongress.org/mcp). See the [MCP tool documentation](https://youcongress.org/mcp-tools) for setup and available tools.
-- Logged-in users can create scoped API keys for authenticated MCP tools that contribute, edit, and verify records.
-- The application code is licensed under the [MIT License](LICENSE). YouCongress’s structured annotations and metadata are released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with attribution to YouCongress. Quoted third-party material and author bios remain subject to their original rights holders; each record links to its source.
-
-### What the data layer does not yet solve
-
-The corpus reflects its source discovery, search terms, agents, and time periods; it is not a census of public or expert belief. Record counts are not polls or truth estimates, and several quotes drawn from one hearing, article, panel, or institutional publication are correlated rather than independent.
-
-Known next steps include retaining search logs and negative results; adding `source_event_id` to expose shared-event clusters; strengthening entity resolution, alias merging, and duplicate review; and extending the deliberately coarse stance labels with confidence, conditions, argument roles, and explicit uncertainty. Automated checks also need calibration through stratified, blinded human audits that report human–human and AI–human agreement, class-specific errors, and representative disagreements.
-
-## Participation layer (beta)
-
-The participation layer uses the sourced record as a transparent input to policy deliberation. Citizens can search topics, inspect sources, vote directly, delegate to users they trust, and add opinions. Public figures can appear as delegates where their stance is inferred from sourced quotes. These interfaces make preferences legible, but neither vote totals nor quote totals determine truth or representative support; those require attention to provenance, argument quality, expertise, dependence among sources, and missing perspectives.
-
-## Case studies
-
-The workflow has also been used to build collections for three epistemic case studies:
-
-- [COVID-19 origins](https://youcongress.org/h/covid-19-origins): 800+ sourced quotations across several claims.
-- [Eggs and health](https://youcongress.org/h/eggs-and-health): 500+ sourced quotations across several claims.
-- [LHC safety](https://youcongress.org/p/lhc-poses-no-risk-to-earth): 180+ sourced quotations on whether the LHC presents a credible risk to Earth.
-
-## About
-
-YouCongress is built by [Hector Perez Arenas](https://www.linkedin.com/in/hectorperezarenas/), who leads an AI engineering team in Madrid and organizes the Madrid Elixir meetup. He also builds open-source knowledge and civic-tech systems, including [Notes.club](https://notes.club), which hosts more than 10,000 Elixir notebooks. Follow him on [Bluesky](https://bsky.app/profile/hecperez.com) or [X](https://x.com/arpahector).
-
-## How to start
-
-Install dependencies:
-
-```bash
-mix deps.get
-```
-
-Create the database, the user `admin@youcongress.org` with password `admin:1234`, and sample data:
-
-```bash
-mix ecto.setup
-```
-
-Run the server:
-
-```bash
+```sh
+cp .env.example .env
+# Set DATABASE_URL if your local PostgreSQL credentials differ.
+mix setup
 mix phx.server
 ```
 
-Open [http://localhost:4000](http://localhost:4000) in your browser.
+The application is available at `http://localhost:4000`. The development environment loads `.env` through `dotenvy` when available.
 
-## How to contribute
+Useful commands:
 
-- Email hector@youcongress.org if you would like to help validate quotes found by AI agents.
-- Take an [unassigned issue](https://github.com/youcongress/youcongress/issues).
+```sh
+mix test
+mix format --check-formatted
+mix intelligence.ingest
+```
 
-## Acknowledgments
+`mix intelligence.ingest` fetches the configured feeds once. The production Oban cron schedule also runs ingestion daily when the queue is enabled. The article table is introduced by `priv/repo/migrations/20261022120000_create_intelligence_articles.exs`; it is additive and does not alter the existing voting or policy tables.
 
-- [AppSignal](https://www.appsignal.com) for application monitoring.
-- [Rocket Validator](https://rocketvalidator.com) for HTML and accessibility checks.
+## Configuration
+
+See [`.env.example`](.env.example). Set real deployment values in the hosting provider’s secret/environment settings; do not commit credentials.
+
+| Variable | Purpose |
+| --- | --- |
+| `BASE_URL` | Canonical public origin, including `https://`; used for canonical links, sitemap, and generated absolute URLs. |
+| `PHX_HOST` / `PORT` | Phoenix host and listener port. The listener binds to all interfaces for container hosting. |
+| `DATABASE_URL` | PostgreSQL connection URL; required in production. |
+| `DATABASE_SSL_VERIFY` | Keep `true` unless the database provider requires another explicitly reviewed setup. |
+| `SECRET_KEY_BASE` | Phoenix cookie/session signing key; generate with `mix phx.gen.secret`. |
+| `POOL_SIZE` | Database pool size. |
+| `INTELLIGENCE_INGESTION_ENABLED` | Enable or disable scheduled feed ingestion. |
+| `CONTACT_EMAIL`, `EMAIL_FROM`, `ADMIN_NOTIFICATION_EMAIL` | Optional contact destination, verified sender, and internal notification recipient. Mail features need a working mail provider. |
+| `SENDGRID_API_KEY` | SendGrid credential for production mail delivery. |
+| `OPENAI_API_KEY`, `OPENAI_ORGANIZATION_KEY` | Optional existing AI-assisted workflows; not used to generate the intelligence feed briefs. |
+| `AMPLITUDE_KEY`, `PLAUSIBLE_DOMAIN` | Optional analytics integrations. Product analytics remain subject to consent. |
+| OAuth, Turnstile, Twilio, and MCP Redis variables | Optional integrations; see their corresponding configuration and feature flags. |
+| `APP_REVISION` | Optional release identifier for monitoring. |
+
+RSS source URLs and their categories are configured in `config/config.exs`. Feed triage uses headline and feed-excerpt text, freshness limits, and deterministic rules; it does not fetch publisher article bodies. Review configured sources and their terms before enabling ingestion in production.
+
+## Deployment notes
+
+This application is an OTP/Phoenix server with PostgreSQL, LiveView WebSocket connections, and Oban workers. Use a deployment target that can run a long-lived BEAM release and background workers. The repository includes a container build and legacy Fly configuration; set the canonical host, database, secrets, mail, and worker process settings for the environment you actually use.
+
+**Vercel compatibility is not established.** A `vercel.json` rewrite or static asset build does not provide an Elixir/OTP runtime, durable Oban workers, or the Phoenix WebSocket process this app requires. Do not treat the current code as a verified Vercel deployment. A Vercel adapter would need to be implemented and exercised end to end (including LiveView, database connections, release startup, and scheduled jobs) before deployment there can be claimed.
+
+After provisioning the database and setting secrets, run the migration/release workflow for the chosen host. Do not use demo seed data in a production database. Configure a real `BASE_URL` before serving indexed pages or enabling public mail.
+
+## Project and data boundaries
+
+- APX summaries and impact labels are triage aids; use the original publisher as the source of record.
+- Recorded votes and quotes are not a representative survey and do not by themselves prove a factual claim.
+- The public dataset includes third-party excerpts. Follow the attribution and licensing notices in each export and respect the rights of original publishers.
+- See `LICENSE` for the software license and the dataset/export notices for data-specific terms.

@@ -1,24 +1,24 @@
-Application.put_env(:you_congress, :hall_classifier, YouCongress.Halls.ClassificationFake)
-Application.put_env(:you_congress, :embeddings_implementation, YouCongress.Embeddings.Fake)
+Application.put_env(:apx, :hall_classifier, APX.Halls.ClassificationFake)
+Application.put_env(:apx, :embeddings_implementation, APX.Embeddings.Fake)
 
 Application.put_env(
-  :you_congress,
+  :apx,
   :title_rewording_implementation,
-  YouCongress.Statements.TitleRewordingFake
+  APX.Statements.TitleRewordingFake
 )
 
 Application.put_env(
-  :you_congress,
+  :apx,
   :quotator_implementation,
-  YouCongress.Opinions.Quotes.QuotatorFake
+  APX.Opinions.Quotes.QuotatorFake
 )
 
 Application.put_env(
-  :you_congress,
+  :apx,
   :author_country_inference_implementation,
-  YouCongress.Authors.CountryInferenceFake
+  APX.Authors.CountryInferenceFake
 )
 
 ExUnit.start()
-Ecto.Adapters.SQL.Sandbox.mode(YouCongress.Repo, :manual)
+Ecto.Adapters.SQL.Sandbox.mode(APX.Repo, :manual)
 ExUnit.configure(exclude: :openai_api)

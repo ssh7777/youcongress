@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RemoveVerifiedColumnsFromOpinions do
+defmodule APX.Repo.Migrations.RemoveVerifiedColumnsFromOpinions do
   use Ecto.Migration
 
   def up do

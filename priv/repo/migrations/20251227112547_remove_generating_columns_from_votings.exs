@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RemoveGeneratingColumnsFromVotings do
+defmodule APX.Repo.Migrations.RemoveGeneratingColumnsFromVotings do
   use Ecto.Migration
 
   def change do
