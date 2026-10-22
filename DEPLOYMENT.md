@@ -122,3 +122,12 @@ mix test
 
 The standalone runtime configuration tests do not need dependencies or a database.
 The full application tests require PostgreSQL and project dependencies.
+
+## Vercel-native replacement in progress
+
+`vercel-app/` contains stage 1 of the Next.js migration: read-only PostgreSQL-backed
+browsing, search, source records and a limited CSV download. It runs natively on
+Vercel with no Phoenix backend but is **not yet feature complete**. See
+[`vercel-app/MIGRATION.md`](vercel-app/MIGRATION.md) for preview deployment and the
+remaining feature-parity work. The root production gateway configuration has not
+been switched to this incomplete replacement.
