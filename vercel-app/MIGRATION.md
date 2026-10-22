@@ -1,78 +1,61 @@
-# APX on Vercel
+# APX database and deployment guide
 
-APX is a native Next.js application using real PostgreSQL. The current production configuration runs embedded PostgreSQL through PGlite inside the Vercel Node.js functions, so it needs no Neon account, integration, or connection string. External PostgreSQL remains supported.
-
-APX does not require the legacy Phoenix server and does not forward traffic to another website.
+APX is a native Next.js application backed by durable external PostgreSQL in production. It supports persistent guest-owned writes for every public record type and does not require the legacy Phoenix server.
 
 ## Routes
 
-- `/` — APX overview.
-- `/explore` — searchable policy statements with quote and vote counts.
-- `/p/<slug>` — statement details and page-only source-record CSV exports.
-- `/reconsider` — open reconsideration requests with their statement links and rationale.
-- `/intelligence` — published intelligence posts.
-- `/api/health` — database and migration health; returns 503 if the complete APX schema cannot be initialized or reached.
+- `/` — overview.
+- `/explore` — statement search and creation.
+- `/p/<slug>` — statements, voting, sourced quotes, owner editing, reconsideration requests, and CSV export.
+- `/reconsider` — open requests and owner-controlled closing.
+- `/intelligence` — publishing and owner editing.
+- `/api/health` — current external schema health.
+- `/api/mutate` — same-origin POST endpoint used by the site’s HTML forms.
 
-## Current embedded production mode
+## Schema
 
-Set `APX_DATABASE_MODE=embedded`. Each function instance lazily starts its own in-memory PostgreSQL database and applies the same versioned migrations before answering record queries. This is appropriate because the current APX interface is read-only and ships without mutable production content.
+`migrations/001_initial.mjs` creates users, policy statements, votes, quotes, intelligence posts, and reconsiderations. `migrations/002_persistent_writes.mjs` adds hashed guest sessions and quote ownership. The migration ledger is `apx_schema_migrations`; the current version is `002_persistent_writes`.
 
-PGlite is single-connection and ephemeral. **Do not add account, voting, ingestion, or other persistent write flows in embedded mode.** Those features require a durable external database and a deliberate data-persistence design. No nonfunctional write buttons are presented in the current interface.
+Migrations are statically imported by `lib/migrations.mjs`, so serverless bundles contain the exact schema code. External migrations run in transactions under a PostgreSQL advisory lock. No migration drops existing tables or inserts demo content.
 
-`serverExternalPackages` in `next.config.mjs` keeps PGlite's WASM assets compatible with Next.js production route bundles.
+## Persistent guest model
 
-## Schema and migrations
+The first successful mutation generates a cryptographically random guest token and stores only its SHA-256 hash in `guest_sessions`. The HttpOnly, Secure (in production), SameSite=Lax cookie lasts one year. Users can edit only records they own. Another guest’s session cannot be used to alter those records.
 
-`migrations/001_initial.mjs` contains the initial SQL schema: users, policy statements, votes, quotes, intelligence posts, and reconsiderations, with constraints and indexes. `apx_schema_migrations` records applied versions. Additional migrations are statically imported by `lib/migrations.mjs`, so the exact migration code is included in every serverless bundle.
+Votes use a `(statement_id, user_id)` upsert, so changing a vote updates rather than duplicates it. Statement deletion is blocked when another guest’s quote, vote, or reconsideration would otherwise be cascade-deleted.
 
-Run the deployment migration check with:
+This guest model is not password authentication, email verification, administration, or moderation. Those features should be added deliberately before exposing privileged operations.
 
-```sh
-cd vercel-app
-npm ci
-APX_DATABASE_MODE=embedded npm run migrate
+## Production mode
+
+```text
+APX_DATABASE_MODE=external
+DATABASE_URL=<sensitive pooled PostgreSQL URL>
+DATABASE_SSL=true
 ```
 
-`npm run build` always validates pending migrations before `next build`, in either database mode. External mode additionally uses a PostgreSQL advisory lock and one transaction per migration. Neither mode drops tables or substitutes demo records.
+`npm run build` applies migrations and runs a rollback write probe before compiling. The probe writes every persistent table and tests an owner-scoped update, then rolls back. This verifies that production is genuinely writable without leaving test data behind.
 
-## Optional external PostgreSQL mode
+Runtime reads use read-only transactions. Writes use a small PostgreSQL pool, parameterized SQL, bounded inputs, owner predicates, and same-origin validation based on forwarded host/protocol headers.
 
-For durable external PostgreSQL, remove `APX_DATABASE_MODE` and set `DATABASE_URL` to a pooled connection string. Runtime record queries then use read-only transactions and a small connection pool.
+## Embedded development mode
 
-```sh
-DATABASE_URL=... npm run build
-```
+`APX_DATABASE_MODE=embedded` starts in-memory PGlite for read-only local development. It is explicitly not a persistent-write mode and is not the production configuration.
 
-TLS certificate verification is enabled by default; `DATABASE_SSL=false` is only for a trusted local database. Use separate databases for production and previews when previews may contain schema changes. A deployment role must be able to create the schema during migration.
-
-## Local verification
+## Verification
 
 ```sh
 cd vercel-app
 npm ci
 npm test
-npm run build:next                         # Framework-only preflight.
-APX_DATABASE_MODE=embedded npm run build   # Exact production database mode.
+APX_DATABASE_MODE=embedded npm run build
 APX_DATABASE_MODE=embedded node test/embedded-integration.mjs
 ```
 
-The embedded integration test checks real HTTP responses for every requested route, migrated health, empty states, and missing records. CI also tests external mode against a disposable local PostgreSQL database with record-level integration coverage. Never point the external integration test at production.
+CI runs external migrations and read-only integration plus `test/mutations-integration.mjs`. That suite performs real HTTP form mutations for every record type, verifies guest cookies and ownership, rejects cross-origin requests, tests vote updates and HTML redirects, checks output escaping, restarts Next.js, and confirms all changes remain.
 
-## Vercel project
-
-The Vercel project uses Root Directory `vercel-app`, Framework `nextjs`, Install Command `npm ci`, and Build Command `npm run build`.
-
-Current environment variables:
-
-- `APX_DATABASE_MODE=embedded` (production and preview)
-- `NEXT_PUBLIC_APP_NAME=APX`
-- `NEXT_PUBLIC_APP_URL=https://apx-lake.vercel.app` (production)
-- `NODE_ENV=production` (production)
-
-After deployment, `/api/health` must return HTTP 200 with:
+The deployment health endpoint must return:
 
 ```json
-{"status":"ok","database":"postgresql","mode":"embedded","schema":"001_initial"}
+{"status":"ok","database":"postgresql","mode":"external","schema":"002_persistent_writes"}
 ```
-
-Also verify `/`, `/explore`, `/reconsider`, and `/intelligence`; a health-only check does not prove that every PGlite route bundle can load its WASM runtime.

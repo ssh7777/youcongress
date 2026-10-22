@@ -20,7 +20,7 @@ try {
     if (server.exitCode !== null) throw new Error('Embedded APX server exited');
     await new Promise(resolve => setTimeout(resolve, 500));
   }
-  assert.deepEqual(health, {status: 'ok', database: 'postgresql', mode: 'embedded', schema: '001_initial'});
+  assert.deepEqual(health, {status: 'ok', database: 'postgresql', mode: 'embedded', schema: '002_persistent_writes'});
 
   for (const path of ['/', '/explore', '/reconsider', '/intelligence']) {
     const response = await fetch(`${origin}${path}`);

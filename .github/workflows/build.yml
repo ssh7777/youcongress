@@ -68,6 +68,13 @@ jobs:
           DATABASE_SSL: 'false'
           NATIVE_TEST_DATABASE: '1'
         run: node vercel-app/test/integration.mjs
+      - name: APX persistent mutation integration
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost/postgres
+          DATABASE_SSL: 'false'
+          APX_DATABASE_MODE: external
+          NATIVE_TEST_DATABASE: '1'
+        run: node vercel-app/test/mutations-integration.mjs
       - name: Install browser smoke-test tools
         run: |
           npm install --prefix /tmp/apx-browser playwright@1.56.1

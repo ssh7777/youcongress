@@ -20,7 +20,7 @@ export function repository(query) {
       const q = searchTerm(term);
       const pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
       const {rows} = await query(`
-        SELECT s.id::text, s.slug, s.title, s.description,
+        SELECT s.id::text, s.slug, s.title, s.description, s.created_by::text,
           (SELECT count(*)::int FROM quotes q WHERE q.statement_id = s.id) AS quote_count,
           (SELECT count(*)::int FROM votes v WHERE v.statement_id = s.id) AS vote_count
         FROM policy_statements s
@@ -31,7 +31,7 @@ export function repository(query) {
     },
     async statement(slug) {
       if (typeof slug !== 'string' || slug.length > 250) return null;
-      const {rows} = await query('SELECT id::text, slug, title, description FROM policy_statements WHERE slug = $1 LIMIT 1', [slug]);
+      const {rows} = await query('SELECT id::text, slug, title, description, created_by::text FROM policy_statements WHERE slug = $1 LIMIT 1', [slug]);
       return rows[0] || null;
     },
     async statementTallies(id) {
@@ -47,7 +47,7 @@ export function repository(query) {
       const {rows} = await query(`
         SELECT q.id::text, q.content, q.source_url, q.source_text,
           q.quote_date::text AS date, q.date_precision, q.author_name,
-          q.verification_status AS stored_quote_status
+          q.verification_status AS stored_quote_status, q.created_by::text
         FROM quotes q
         WHERE q.statement_id = $1
         ORDER BY q.id DESC LIMIT $2 OFFSET $3`,
@@ -57,7 +57,7 @@ export function repository(query) {
     async intelligencePosts(page = 1) {
       const {rows} = await query(`
         SELECT p.id::text, p.slug, p.title, p.summary, p.content,
-          p.published_at::text AS published_at, u.display_name AS author_name
+          p.published_at::text AS published_at, u.display_name AS author_name, p.author_id::text
         FROM intelligence_posts p
         LEFT JOIN users u ON u.id = p.author_id
         WHERE p.status = 'published' AND p.published_at IS NOT NULL AND p.published_at <= now()
@@ -65,11 +65,16 @@ export function repository(query) {
       [PAGE_SIZE + 1, (pageNumber(page) - 1) * PAGE_SIZE]);
       return {items: rows.slice(0, PAGE_SIZE), hasMore: rows.length > PAGE_SIZE};
     },
+    async voteForUser(statementId, userId) {
+      if (!userId) return null;
+      const {rows} = await query('SELECT position FROM votes WHERE statement_id=$1 AND user_id=$2 LIMIT 1', [statementId, userId]);
+      return rows[0]?.position || null;
+    },
     async reconsiderations(page = 1) {
       const {rows} = await query(`
         SELECT r.id::text, r.rationale, r.created_at::text,
           s.slug AS statement_slug, s.title AS statement_title,
-          u.display_name AS requested_by_name
+          u.display_name AS requested_by_name, r.requested_by::text
         FROM reconsiderations r
         JOIN policy_statements s ON s.id = r.statement_id
         LEFT JOIN users u ON u.id = r.requested_by

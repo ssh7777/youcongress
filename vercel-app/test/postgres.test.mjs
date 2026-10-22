@@ -20,6 +20,9 @@ test('connection-string SSL parameters cannot override explicit TLS settings', (
 test('database mode is explicit and external URLs remain supported', () => {
   assert.equal(databaseMode({APX_DATABASE_MODE: 'embedded'}), 'embedded');
   assert.equal(databaseMode({DATABASE_URL: 'postgres://db.example.com/apx'}), 'external');
+  assert.equal(databaseMode({APX_DATABASE_MODE: 'external', DATABASE_URL: 'postgres://db.example.com/apx'}), 'external');
+  assert.throws(() => databaseMode({APX_DATABASE_MODE: 'external'}), /DATABASE_URL is required/);
+  assert.throws(() => databaseMode({APX_DATABASE_MODE: 'invalid'}), /embedded or external/);
   assert.throws(() => databaseMode({}), /APX_DATABASE_MODE=embedded/);
 });
 
@@ -29,5 +32,8 @@ test('initial schema contains every required APX table without destructive state
   for (const table of ['users', 'policy_statements', 'votes', 'quotes', 'intelligence_posts', 'reconsiderations']) {
     assert.match(sql, new RegExp(`CREATE TABLE ${table} \\(`));
   }
-  assert.doesNotMatch(sql, /\b(DROP|TRUNCATE|ALTER)\s+TABLE\b/i);
+  assert.doesNotMatch(sql, /\b(DROP|TRUNCATE)\s+TABLE\b/i);
+  assert.equal(migrations[1].version, '002_persistent_writes');
+  assert.match(migrations[1].sql, /CREATE TABLE guest_sessions/);
+  assert.match(migrations[1].sql, /ALTER TABLE quotes ADD COLUMN created_by/);
 });
