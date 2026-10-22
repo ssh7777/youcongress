@@ -38,12 +38,18 @@ jobs:
         run: elixir scripts/runtime_config_test.exs
       - name: Build production Docker release
         run: docker build --progress=plain --tag apx:ci .
-      - name: Build and test the Vercel-native migration
+      - name: Test and preflight-build APX
         run: |
           npm ci --prefix vercel-app
           npm test --prefix vercel-app
+          npm run build:next --prefix vercel-app
+      - name: Verify the embedded APX production database path
+        env:
+          APX_DATABASE_MODE: embedded
+        run: |
           npm run build --prefix vercel-app
-      - name: Migrate disposable database for native integration
+          node vercel-app/test/embedded-integration.mjs
+      - name: Migrate disposable database for Phoenix
         run: >-
           docker run --rm --network host
           -e DATABASE_URL=ecto://postgres:postgres@localhost/you_congress
@@ -51,9 +57,14 @@ jobs:
           -e BASE_URL=http://localhost:4000
           -e SECRET_KEY_BASE=ci-only-secret-key-base-not-for-production-0123456789abcdef0123456789
           apx:ci /app/bin/migrate
-      - name: Native integration against the migrated schema
+      - name: Migrate the disposable APX database
         env:
-          DATABASE_URL: postgres://postgres:postgres@localhost/you_congress
+          DATABASE_URL: postgres://postgres:postgres@localhost/postgres
+          DATABASE_SSL: 'false'
+        run: npm run migrate --prefix vercel-app
+      - name: APX integration against the migrated schema
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost/postgres
           DATABASE_SSL: 'false'
           NATIVE_TEST_DATABASE: '1'
         run: node vercel-app/test/integration.mjs

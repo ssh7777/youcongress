@@ -1,20 +1,15 @@
 import Link from 'next/link';
 
-const appName = process.env.NEXT_PUBLIC_APP_NAME || 'APX';
-
 export default function Home() {
-  return <><p className="eyebrow">Source-grounded public knowledge</p>
-    <h1>Understand the statements.<br/>Inspect the sources.</h1>
-    <p>{appName} is a public-records platform for hard policy questions. Browse claims and the quotations connected to them, review how people are voting, and follow policy intelligence. Each source remains separate from its interpretation.</p>
-    <Link className="button" href="/explore">Explore statements →</Link>
-    <section><h2>Three ways in</h2>
-      <ul className="cards">
-        <li><Link href="/explore"><strong>Explore</strong> — search policy statements and read the sourced quotations behind each one.</Link></li>
-        <li><Link href="/reconsider"><strong>Reconsider</strong> — see where opinion stands and revisit your own positions as evidence changes.</Link></li>
-        <li><Link href="/intelligence"><strong>Intelligence</strong> — follow source-linked posts tracking policy developments.</Link></li>
-      </ul>
+  return <>
+    <p className="eyebrow">Source-grounded public knowledge</p>
+    <h1>Policy decisions start<br/>with inspectable evidence.</h1>
+    <p className="lede">APX connects policy statements to sourced quotations, public votes, reconsiderations, and intelligence analysis—without separating a claim from its provenance.</p>
+    <div className="actions"><Link className="button" href="/explore">Explore statements →</Link><Link className="text-link" href="/intelligence">Read intelligence</Link></div>
+    <section className="feature-grid" aria-label="APX capabilities">
+      <article><p className="eyebrow">Explore</p><h2>Claims and evidence</h2><p>Compare policy statements with the original passages and sources connected to them.</p></article>
+      <article><p className="eyebrow">Reconsider</p><h2>Reopen the question</h2><p>Inspect requests to revisit a statement when evidence, context, or reasoning changes.</p></article>
+      <article><p className="eyebrow">Intelligence</p><h2>Analysis with context</h2><p>Read published intelligence posts alongside the structured public record.</p></article>
     </section>
-    <section><h2>Transparent records, not verdicts</h2>
-      <p>This deployment reads the {appName} PostgreSQL records directly using server-side queries. Quotes keep their original sources; annotations stay inspectable. Vote totals and record counts are not truth estimates or polls.</p>
-    </section></>;
+  </>;
 }
