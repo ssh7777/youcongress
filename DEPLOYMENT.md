@@ -1,52 +1,38 @@
 # Production deployment
 
-## Vercel deployment: HTTP gateway + persistent Phoenix backend
+## Current Vercel deployment: repository-root Next.js application
 
-This repository now includes `vercel.json` and a dependency-free Node build
-script that generates a **Vercel Build Output API v3 HTTP gateway**. Every path
-(including assets, forms, OAuth callbacks, and LiveView polling) is rewritten to
-your own Phoenix backend, not redirected to another website or replaced by a
-static landing page. Dynamic responses are marked private/no-store.
+The root `package.json`, `app/`, `next.config.mjs`, and `vercel.json` now build the
+native Next.js migration. Vercel must use the **repository root**, framework
+**Next.js**, install command `npm ci`, build command `npm run build`, and output
+`.next` (all commands are also committed in `vercel.json`). No PHOENIX_ORIGIN or
+persistent Phoenix backend is required by this deployment.
 
-**Vercel still does not run the Elixir release, PostgreSQL or Oban workers.**
-Deploy the existing Dockerfile on a persistent container host first. There is no
-backend URL or database included with a Vercel connection, and this repository
-will never silently use the original YouCongress production server as yours.
+**Scope warning:** this serves the read-only migration, not the complete Phoenix
+application. Authentication, voting, delegation, jobs and MCP are not migrated.
+The persistent Phoenix application can still be built separately via Docker.
+See `vercel-app/MIGRATION.md` for feature scope and remaining work.
 
-### Setup order (required)
+Set `DATABASE_URL` to an existing migrated YouCongress PostgreSQL database using
+a serverless pooled connection URL, preferably with read-only credentials. TLS
+verifies peer certificates by default. Missing credentials or an unavailable
+schema yield HTTP 503 at `/api/health`; a successful build alone does not prove
+data access works. Never put credentials in a NEXT_PUBLIC_ variable.
 
-1. Deploy the Dockerfile to your own container host. Supply `DATABASE_URL`,
-   `SECRET_KEY_BASE`, and integrations below; run `/app/bin/migrate`.
-2. Set **on the Phoenix backend**:
-   - `BASE_URL=https://<your-public-vercel-domain>` (the address users visit).
-   - `LIVEVIEW_TRANSPORT=longpoll`.
-   - Keep the secret stable across deployments and replicas. Configure clustering
-     appropriately if the backend has multiple instances.
-3. Set **in Vercel** (separately for production and previews):
-   - `PHOENIX_ORIGIN=https://<your-backend-host>` (NOT the Vercel address).
-   - Leave Framework as Other, repository root as Root Directory, and Output
-     Directory unset. The committed `vercel.json` supplies the build command.
-4. Deploy this branch to Vercel. The build checks `/about` on the backend and
-   requires both a CSRF token and the long-poll transport marker. Missing settings,
-   backend errors, redirects, or old backend code now **fail the build clearly**
-   instead of publishing a "Ready" deployment with an empty output and a 404.
-5. Verify the public gateway homepage, `/explore` search, login/logout, and an
-   authenticated vote against a staging database. Register OAuth callbacks and
-   Turnstile domains for the public Vercel address. Production side effects such
-   as emails and votes are not tested automatically against your real accounts.
+Before deploying, remove old dashboard overrides for the gateway command
+`node scripts/build-vercel.mjs`, output `.vercel/output`, or root directory
+`vercel-app`. The gateway script is now legacy tooling, not the production entry
+point. Committed config selects Next.js, but the project's Root Directory must
+still be correct. Any stored PHOENIX_ORIGIN is unused by the native application.
 
-Vercel's HTTP rewrites do not proxy WebSocket upgrades. Gateway mode explicitly
-uses Phoenix's HTTP long-poll transport with sessions/CSRF enabled; direct
-container deployments retain WebSockets with a long-poll fallback. No arbitrary
-wildcard origin allowlist or CORS bypass is used. A preview backend must trust
-its exact preview public origin; don't share production databases with previews.
-Vercel proxy timeouts still apply to long-running HTTP requests and streamed MCP
-responses; use the backend directly for integrations requiring longer streams.
+Check after deployment: `/` and `/explore`, `/api/health` (must return 200), a
+known `/p/<slug>` record and its source-record CSV. The native CSV is a page-only
+source export, not the authoritative verified Phoenix dataset.
 
-Local gateway builder checks: `node --test scripts/build-vercel.test.mjs`.
-CI compiles the actual Docker backend and tests LiveView connection plus a search
-event in Chromium using long-polling. This does not by itself verify a live
-Vercel deployment or your external integrations.
+## Legacy Phoenix container configuration
+
+The remaining configuration below applies to the separate Phoenix application,
+not to the root Vercel Next.js deployment.
 
 ## Required configuration
 
@@ -123,11 +109,10 @@ mix test
 The standalone runtime configuration tests do not need dependencies or a database.
 The full application tests require PostgreSQL and project dependencies.
 
-## Vercel-native replacement in progress
+## Native migration source and tests
 
-`vercel-app/` contains stage 1 of the Next.js migration: read-only PostgreSQL-backed
-browsing, search, source records and a limited CSV download. It runs natively on
-Vercel with no Phoenix backend but is **not yet feature complete**. See
-[`vercel-app/MIGRATION.md`](vercel-app/MIGRATION.md) for preview deployment and the
-remaining feature-parity work. The root production gateway configuration has not
-been switched to this incomplete replacement.
+`vercel-app/` contains the shared implementation imported by the root App Router.
+CI builds the root application and tests its real HTTP routes against a fully
+migrated disposable PostgreSQL database. See
+[`vercel-app/MIGRATION.md`](vercel-app/MIGRATION.md) for remaining feature-parity
+work. Do not claim the read-only stage is the complete participation application.

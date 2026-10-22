@@ -40,9 +40,9 @@ jobs:
         run: docker build --progress=plain --tag youcongress:ci .
       - name: Build and test the Vercel-native migration
         run: |
-          npm ci --prefix vercel-app
-          npm test --prefix vercel-app
-          npm run build --prefix vercel-app
+          npm ci
+          npm test
+          npm run build
       - name: Migrate disposable database for native integration
         run: >-
           docker run --rm --network host

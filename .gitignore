@@ -46,3 +46,9 @@ npm-debug.log
 
 # Vercel generated output and local project linkage
 .vercel/
+
+# Root Next.js deployment
+/node_modules/
+/.next/
+/.env.local
+/.env.*.local
