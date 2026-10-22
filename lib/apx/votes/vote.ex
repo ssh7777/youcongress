@@ -1,0 +1,56 @@
+defmodule APX.Votes.Vote do
+  @moduledoc """
+  Define Vote schema
+  """
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias APX.Authors.Author
+  alias APX.Statements.Statement
+  alias APX.Opinions.Opinion
+
+  schema "votes" do
+    field :direct, :boolean, default: true
+    field :twin, :boolean, default: false
+    field :answer, Ecto.Enum, values: [:for, :against, :abstain]
+
+    field :verification_status, Ecto.Enum,
+      values: [:verified, :ai_verified, :ai_unverifiable, :endorsed, :disputed, :unverifiable]
+
+    belongs_to :author, Author
+    belongs_to :statement, Statement
+    # opinion_id links to the main opinion
+    # authors can have more than one opinion per statement, but at the moment we only display one
+    belongs_to :opinion, Opinion
+    has_many :verifications, APX.VoteVerifications.VoteVerification
+    field :alternate_opinions, {:array, :map}, virtual: true, default: []
+
+    timestamps()
+  end
+
+  @type t :: %__MODULE__{
+          direct: boolean(),
+          twin: boolean(),
+          author_id: integer(),
+          statement_id: integer(),
+          answer: :for | :against | :abstain,
+          opinion_id: integer(),
+          inserted_at: NaiveDateTime.t(),
+          updated_at: NaiveDateTime.t()
+        }
+  @doc false
+  def changeset(vote, attrs) do
+    vote
+    |> cast(attrs, [
+      :direct,
+      :twin,
+      :author_id,
+      :statement_id,
+      :answer,
+      :opinion_id,
+      :verification_status
+    ])
+    |> validate_required([:author_id, :statement_id])
+    |> unique_constraint([:author_id, :statement_id])
+  end
+end

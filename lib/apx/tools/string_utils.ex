@@ -1,0 +1,30 @@
+defmodule APX.Tools.StringUtils do
+  @moduledoc """
+  String utilities.
+  """
+
+  def titleize(string) do
+    string
+    |> String.split("-")
+    |> Enum.map_join(" ", fn word ->
+      word
+      |> String.capitalize()
+      |> String.replace("Cern", "CERN")
+      |> String.replace("For", "for")
+      |> String.replace("Us", "US")
+      |> String.replace("Eu", "EU")
+      |> String.replace("Ai", "AI")
+      |> String.replace("Uk", "UK")
+    end)
+  end
+
+  def titleize_hall("us"), do: "US"
+  def titleize_hall("ai"), do: "AI"
+  def titleize_hall("eu"), do: "EU"
+  def titleize_hall("agi"), do: "AGI"
+  def titleize_hall("us-congress"), do: "the US Congress"
+  def titleize_hall("congreso-es"), do: "the Spanish Congress"
+  def titleize_hall("flf-epistack"), do: "Epistemic Systems"
+  def titleize_hall("covid-19-origins"), do: "COVID-19 Origins"
+  def titleize_hall(hall_name), do: titleize(hall_name)
+end

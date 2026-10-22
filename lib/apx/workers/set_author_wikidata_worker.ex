@@ -1,0 +1,70 @@
+defmodule APX.Workers.SetAuthorWikidataWorker do
+  @moduledoc """
+  Reads an author's `wikipedia_url`, resolves its Wikidata id and stores it
+  in the `wikidata` field.
+
+  Enqueue with `%{author_id: author.id}`.
+  """
+
+  use Oban.Worker, queue: :wikidata, unique: [states: [:scheduled, :available]]
+
+  require Logger
+
+  alias APX.Authors
+  alias APX.Authors.Author
+  alias APX.Repo
+  alias APX.Wikidata
+  alias APX.Workers.SetAuthorTwitterFromWikidataWorker
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: %{"author_id" => author_id}}) do
+    case Repo.get(Author, author_id) do
+      nil ->
+        :ok
+
+      %Author{wikidata: wikidata} when is_binary(wikidata) ->
+        :ok
+
+      %Author{wikipedia_url: nil} ->
+        :ok
+
+      %Author{} = author ->
+        fetch_and_store(author)
+    end
+  end
+
+  defp fetch_and_store(%Author{} = author) do
+    case Wikidata.get_wikidata_id(author.wikipedia_url) do
+      {:ok, nil} ->
+        Logger.info("No Wikidata id found for author #{author.id} (#{author.wikipedia_url})")
+        :ok
+
+      {:ok, wikidata} ->
+        update_wikidata(author, wikidata)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp update_wikidata(%Author{} = author, wikidata) do
+    case Authors.update_author(author, %{wikidata: wikidata}) do
+      {:ok, author} ->
+        maybe_enqueue_twitter(author)
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp maybe_enqueue_twitter(%Author{twitter_username: username})
+       when is_binary(username) and username != "",
+       do: :ok
+
+  defp maybe_enqueue_twitter(%Author{id: author_id}) do
+    %{author_id: author_id}
+    |> SetAuthorTwitterFromWikidataWorker.new()
+    |> Oban.insert()
+  end
+end

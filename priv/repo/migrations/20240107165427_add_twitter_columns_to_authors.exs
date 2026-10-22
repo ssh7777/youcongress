@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddTwitterColumnsToAuthors do
+defmodule APX.Repo.Migrations.AddTwitterColumnsToAuthors do
   use Ecto.Migration
 
   def change do

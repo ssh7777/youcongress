@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RenameTwitterUrlToTwitterUsernameInAuthors do
+defmodule APX.Repo.Migrations.RenameTwitterUrlToTwitterUsernameInAuthors do
   use Ecto.Migration
 
   def up do

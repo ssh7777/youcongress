@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddAccountCompletionBannerDismissedAtToUsers do
+defmodule APX.Repo.Migrations.AddAccountCompletionBannerDismissedAtToUsers do
   use Ecto.Migration
 
   def change do

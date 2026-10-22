@@ -1,0 +1,194 @@
+defmodule APXWeb.MCPServer.QuotesRandomUnverifiedTest do
+  use ExUnit.Case, async: false
+
+  import Mock
+
+  alias APXWeb.MCPServer.QuotesRandomUnverified
+
+  describe "execute/2" do
+    test "returns random unverified quotes with statements and votes" do
+      opinion = %{
+        id: 11,
+        content: "We need to tax carbon to save the planet.",
+        author_id: 7,
+        author: %{name: "Ada", bio: "Climate advocate"},
+        source_url: "https://example.com/carbon-tax",
+        source_text: nil,
+        date: ~D[2024-01-01],
+        date_precision: :year,
+        verification_status: :ai_verified,
+        statements: [%{id: 3, title: "Tax carbon emissions"}],
+        opinion_statements: [%{statement_id: 3, verification_status: :verified}]
+      }
+
+      vote = %{
+        id: 13,
+        statement_id: 3,
+        answer: :for,
+        author_id: 7,
+        author: %{name: "Ada"},
+        direct: true,
+        verification_status: :ai_verified
+      }
+
+      with_mocks([
+        {Anubis.Server.Response, [],
+         [
+           tool: fn -> :tool end,
+           json: fn :tool, data -> {:json, data} end,
+           error: fn :tool, message -> {:error, message} end
+         ]},
+        {APX.Opinions, [],
+         [
+           list_opinions: fn opts ->
+             assert opts[:has_statements] == true
+             assert opts[:only_quotes] == true
+             assert opts[:needs_quote_review] == true
+             refute Keyword.has_key?(opts, :is_verified)
+             refute Keyword.has_key?(opts, :needs_verification)
+             assert opts[:limit] == 10
+             assert opts[:preload] == [:author, :statements, :opinion_statements]
+             assert opts[:exclude_source_prefixes] == unsupported_source_prefixes()
+             assert opts[:order_by] != nil
+             [opinion]
+           end
+         ]},
+        {APX.Votes, [],
+         [
+           list_votes: fn opts ->
+             assert opts == [opinion_ids: [11], preload: [:author]]
+             [vote]
+           end
+         ]}
+      ]) do
+        assert {:reply, {:json, %{quotes: [quote_entry]}}, :frame} =
+                 QuotesRandomUnverified.execute(%{}, :frame)
+
+        %{quote: quote_payload, statements: [statement_payload]} = quote_entry
+
+        assert quote_payload.opinion_id == opinion.id
+        assert quote_payload.quote == opinion.content
+        assert quote_payload.verification_status == :ai_verified
+        assert statement_payload.statement_id == 3
+        assert statement_payload.statement_title == "Tax carbon emissions"
+        assert statement_payload.relevance_status == :verified
+        assert statement_payload.vote.vote_id == vote.id
+        assert statement_payload.vote.answer == :for
+        assert statement_payload.vote.verification_status == :ai_verified
+      end
+    end
+
+    test "defaults to 10 quotes and clamps count to a maximum of 100" do
+      with_mocks([
+        {Anubis.Server.Response, [],
+         [
+           tool: fn -> :tool end,
+           json: fn :tool, data -> {:json, data} end,
+           error: fn :tool, message -> {:error, message} end
+         ]},
+        {APX.Opinions, [],
+         [
+           list_opinions: fn opts ->
+             send(self(), {:limit, opts[:limit]})
+             []
+           end
+         ]}
+      ]) do
+        QuotesRandomUnverified.execute(%{}, :frame)
+        assert_received {:limit, 10}
+
+        QuotesRandomUnverified.execute(%{count: 25}, :frame)
+        assert_received {:limit, 25}
+
+        QuotesRandomUnverified.execute(%{count: 500}, :frame)
+        assert_received {:limit, 100}
+
+        QuotesRandomUnverified.execute(%{count: 0}, :frame)
+        assert_received {:limit, 1}
+      end
+    end
+
+    test "passes unsupported source prefixes to the query" do
+      allowed_article = %{
+        id: 22,
+        content: "We must end partisan gerrymandering immediately.",
+        author_id: 9,
+        author: %{name: "Lin", bio: "Election reform advocate"},
+        source_url: "https://example.com/opinion",
+        source_text: nil,
+        date: ~D[2024-01-01],
+        date_precision: :year,
+        verification_status: nil,
+        statements: [%{id: 5, title: "End partisan gerrymandering"}]
+      }
+
+      with_mocks([
+        {Anubis.Server.Response, [],
+         [
+           tool: fn -> :tool end,
+           json: fn :tool, data -> {:json, data} end,
+           error: fn :tool, message -> {:error, message} end
+         ]},
+        {APX.Opinions, [],
+         [
+           list_opinions: fn opts ->
+             assert opts[:exclude_source_prefixes] == unsupported_source_prefixes()
+             assert opts[:order_by] != nil
+             [allowed_article]
+           end
+         ]},
+        {APX.Votes, [], [list_votes: fn _opts -> [] end]}
+      ]) do
+        assert {:reply, {:json, %{quotes: [%{quote: quote_payload}]}}, :frame} =
+                 QuotesRandomUnverified.execute(%{}, :frame)
+
+        assert quote_payload.opinion_id == allowed_article.id
+        assert quote_payload.source_url == "https://example.com/opinion"
+      end
+    end
+
+    test "requests quotes with pending reviewable verification work" do
+      with_mocks([
+        {Anubis.Server.Response, [],
+         [
+           tool: fn -> :tool end,
+           json: fn :tool, data -> {:json, data} end,
+           error: fn :tool, message -> {:error, message} end
+         ]},
+        {APX.Opinions, [],
+         [
+           list_opinions: fn opts ->
+             assert opts[:needs_quote_review] == true
+             refute Keyword.has_key?(opts, :is_verified)
+             refute Keyword.has_key?(opts, :needs_verification)
+             []
+           end
+         ]}
+      ]) do
+        assert {:reply, {:error, "No quotes needing verification review available."}, :frame} =
+                 QuotesRandomUnverified.execute(%{}, :frame)
+      end
+    end
+
+    test "returns deterministic error when no unverified quotes exist" do
+      with_mocks([
+        {Anubis.Server.Response, [],
+         [
+           tool: fn -> :tool end,
+           json: fn :tool, data -> {:json, data} end,
+           error: fn :tool, message -> {:error, message} end
+         ]},
+        {APX.Opinions, [], [list_opinions: fn _opts -> [] end]}
+      ]) do
+        assert {:reply, {:error, "No quotes needing verification review available."}, :frame} =
+                 QuotesRandomUnverified.execute(%{}, :frame)
+      end
+    end
+  end
+
+  defp unsupported_source_prefixes do
+    [
+      "https://www.youtube.com"
+    ]
+  end
+end

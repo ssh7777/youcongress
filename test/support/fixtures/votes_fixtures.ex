@@ -1,14 +1,14 @@
-defmodule YouCongress.VotesFixtures do
+defmodule APX.VotesFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `YouCongress.Votes` context.
+  entities via the `APX.Votes` context.
   """
 
-  import YouCongress.AuthorsFixtures
-  import YouCongress.StatementsFixtures
+  import APX.AuthorsFixtures
+  import APX.StatementsFixtures
 
-  import YouCongress.OpinionsFixtures
-  alias YouCongress.Votes
+  import APX.OpinionsFixtures
+  alias APX.Votes
 
   @doc """
   Generate a vote.
@@ -38,8 +38,8 @@ defmodule YouCongress.VotesFixtures do
   def fill_statement_with_quotes(statement_id, count \\ 20) do
     Enum.each(1..count, fn _ ->
       author = author_fixture()
-      opinion = YouCongress.OpinionsFixtures.opinion_fixture(%{author_id: author.id})
-      {:ok, _} = YouCongress.Opinions.add_opinion_to_statement(opinion, statement_id)
+      opinion = APX.OpinionsFixtures.opinion_fixture(%{author_id: author.id})
+      {:ok, _} = APX.Opinions.add_opinion_to_statement(opinion, statement_id)
 
       {:ok, _} =
         Votes.create_vote(%{

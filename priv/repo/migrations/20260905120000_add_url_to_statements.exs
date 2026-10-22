@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddUrlToStatements do
+defmodule APX.Repo.Migrations.AddUrlToStatements do
   use Ecto.Migration
 
   def change do

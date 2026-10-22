@@ -2,4 +2,4 @@
 set -eu
 
 cd -P -- "$(dirname -- "$0")"
-PHX_SERVER=true exec ./you_congress start
+PHX_SERVER=true exec ./apx start

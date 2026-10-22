@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.NormalizeUserEmailIdentity do
+defmodule APX.Repo.Migrations.NormalizeUserEmailIdentity do
   use Ecto.Migration
 
   def up do

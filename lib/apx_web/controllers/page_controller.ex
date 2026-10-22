@@ -1,0 +1,406 @@
+defmodule APXWeb.PageController do
+  use APXWeb, :controller
+
+  alias APX.Authors
+  alias APX.Halls
+  alias APX.Opinions
+  alias APX.Statements
+  alias APXWeb.SEO
+
+  def terms(conn, _params) do
+    render(conn, :terms)
+  end
+
+  def privacy_policy(conn, _params) do
+    render(conn, :privacy_policy)
+  end
+
+  def sitemap(conn, _params) do
+    statements = Statements.list_statements(order: :updated_at_desc, limit: 10_000)
+    authors = Authors.list_authors(with_quotes: true, order_by: [desc: :id], limit: 10_000)
+    halls = Halls.list_halls_with_statements()
+    articles = APX.Intelligence.list_articles(limit: 10_000)
+
+    quotes =
+      Opinions.list_opinions(
+        only_quotes: true,
+        ancestry: nil,
+        twin: false,
+        order_by: [desc: :id],
+        limit: 10_000
+      )
+
+    body = build_sitemap(statements, authors, halls, quotes, articles)
+
+    conn
+    |> put_resp_content_type("application/xml")
+    |> send_resp(200, body)
+  end
+
+  def robots_txt(conn, _params) do
+    base_url =
+      Application.get_env(:apx, :base_url) ||
+        APXWeb.Endpoint.url()
+
+    body = """
+    User-agent: *
+    Allow: /
+
+    # APX publishes source-linked policy and cyber intelligence briefs.
+    Sitemap: #{String.trim_trailing(base_url, "/")}/sitemap.xml
+    """
+
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(200, body)
+  end
+
+  defp build_sitemap(statements, authors, halls, quotes, articles) do
+    static_urls =
+      Enum.map(
+        [
+          url(~p"/"),
+          url(~p"/explore"),
+          url(~p"/about"),
+          url(~p"/theory-of-change"),
+          url(~p"/faq"),
+          url(~p"/reconsider"),
+          url(~p"/independent-policy-verification-framework"),
+          url(~p"/intelligence"),
+          url(~p"/mcp-tools"),
+          url(~p"/dataset")
+        ],
+        fn loc ->
+          url_entry(loc, nil, "0.7")
+        end
+      )
+
+    statement_urls =
+      Enum.map(statements, fn statement ->
+        url_entry(url(~p"/p/#{statement.slug}"), lastmod(statement), "0.6")
+      end)
+
+    author_urls =
+      Enum.map(authors, fn author ->
+        url_entry(SEO.author_url(author), lastmod(author), "0.7")
+      end)
+
+    hall_urls = Enum.map(halls, fn hall -> url_entry(url(~p"/h/#{hall.name}"), nil, "0.7") end)
+
+    quote_urls =
+      Enum.map(quotes, fn opinion ->
+        url_entry(url(~p"/c/#{opinion.id}"), lastmod(opinion), "0.5")
+      end)
+
+    article_urls =
+      Enum.map(articles, fn article ->
+        url_entry(url(~p"/intelligence/#{article.slug}"), lastmod(article), "0.8")
+      end)
+
+    [
+      ~s(<?xml version="1.0" encoding="UTF-8"?>\n),
+      ~s(<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n),
+      static_urls,
+      statement_urls,
+      author_urls,
+      hall_urls,
+      quote_urls,
+      article_urls,
+      ~s(</urlset>\n)
+    ]
+  end
+
+  defp url_entry(loc, lastmod, priority) do
+    lastmod_tag = if lastmod, do: "\n    <lastmod>#{lastmod}</lastmod>", else: ""
+
+    """
+      <url>
+        <loc>#{loc}</loc>#{lastmod_tag}
+        <changefreq>weekly</changefreq>
+        <priority>#{priority}</priority>
+      </url>
+    """
+  end
+
+  defp lastmod(record) do
+    case record.updated_at || record.inserted_at do
+      %DateTime{} = datetime ->
+        datetime
+        |> DateTime.truncate(:second)
+        |> DateTime.to_iso8601()
+
+      %NaiveDateTime{} = naive ->
+        naive
+        |> DateTime.from_naive!("Etc/UTC")
+        |> DateTime.truncate(:second)
+        |> DateTime.to_iso8601()
+
+      _ ->
+        nil
+    end
+  end
+
+  def waiting_list(conn, _params) do
+    render(conn, :waiting_list, layout: false)
+  end
+
+  def about(conn, _params) do
+    render(conn, :about,
+      page_title: "About APX",
+      page_description:
+        "Investigate AI governance, safety, and the impact of AI on jobs through sourced positions, scrutiny, voting, and delegation.",
+      canonical_url: url(~p"/about")
+    )
+  end
+
+  def theory_of_change(conn, _params) do
+    render(conn, :theory_of_change,
+      page_title: "Our theory of change: from shared evidence to better AI governance",
+      page_description:
+        "How APX aims to connect sourced evidence and informed participation with better AI governance, safety, outcomes for workers, and shared benefits.",
+      canonical_url: url(~p"/theory-of-change")
+    )
+  end
+
+  def faq(conn, _params) do
+    render(conn, :faq)
+  end
+
+  def mcp_tools(conn, _params) do
+    render(conn, :mcp_tools)
+  end
+
+  def dataset(conn, _params) do
+    render(conn, :dataset)
+  end
+
+  # Machine-readable site description for AI assistants/agents.
+  # See https://llmstxt.org/. Advertises the MCP server so AIs visiting the
+  # site discover the tools without a human having to configure them.
+  def llms_txt(conn, _params) do
+    conn
+    |> put_resp_content_type("text/markdown")
+    |> send_resp(200, build_llms_txt())
+  end
+
+  @doc """
+  Returns `OK` when a positively verified quote has a date no older than
+  yesterday; otherwise returns the ISO-8601 date of the latest such quote.
+
+  Quotes store a `date`, rather than a timestamp, so yesterday is the oldest
+  date that can be considered within the last 24 hours.
+  """
+  def status_24h(conn, _params) do
+    oldest_recent_date = Date.add(Date.utc_today(), -1)
+
+    latest_quote =
+      Opinions.get_opinion(
+        only_quotes: true,
+        statuses: [:endorsed, :verified, :ai_verified],
+        order_by: [desc_nulls_last: :date, desc: :id]
+      )
+
+    body =
+      case latest_quote do
+        %{date: %Date{} = date} when date >= oldest_recent_date ->
+          "OK"
+
+        %{date: %Date{} = date} ->
+          Date.to_iso8601(date)
+
+        _ ->
+          "No verified quote date available"
+      end
+
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(200, body)
+  end
+
+  # When changing the tool list here, also update the human docs at /mcp-tools
+  # (page_html/mcp_tools.html.heex), and vice versa.
+  defp build_llms_txt do
+    """
+    # APX
+
+    > APX is a source-grounded policy analytics and participation platform. It links
+    > public-source claims and positions to topics, proposals, votes, and authors.
+    > Its intelligence hub curates RSS metadata and short rule-based briefs with
+    > direct publisher attribution. APX is decision support, not a government service
+    > or a claim of representative expert consensus. When citing a brief or quote,
+    > cite the originating publisher alongside the APX page.
+
+    #{topics_section()}
+    #{intelligence_section()}
+    #{key_authors_section()}
+    #{top_statements_section()}
+    #{mcp_section()}
+    ## Optional
+
+    - [About](#{url(~p"/about")})
+    - [FAQ](#{url(~p"/faq")})
+    - [Policy & cyber intelligence](#{url(~p"/intelligence")})
+    - [MCP tool docs](#{url(~p"/mcp-tools")})
+    - [Sitemap](#{url(~p"/sitemap.xml")})
+    """
+  end
+
+  defp topics_section do
+    lines =
+      Halls.list_halls_with_quote_counts()
+      |> Enum.map(fn {hall, quote_count} ->
+        topic = APX.Tools.StringUtils.titleize_hall(hall.name)
+
+        "- [#{topic}](#{url(~p"/h/#{hall.name}")}): #{quote_count} verified quotes for and against"
+      end)
+
+    """
+    ## Topics
+
+    Each topic page summarizes sourced claims, expert/public positions and votes with verified quotes.
+
+    #{Enum.join(lines, "\n")}
+    """
+  end
+
+  defp intelligence_section do
+    lines =
+      APX.Intelligence.list_articles(limit: 20)
+      |> Enum.map(fn article ->
+        label = APX.Intelligence.PolicyLinker.category_label(article.category)
+        "- [#{article.title}](#{url(~p"/intelligence/#{article.slug}")}) — #{label}; source: #{article.canonical_url}"
+      end)
+
+    """
+    ## Policy & cyber intelligence
+
+    APX summaries are automated triage from publisher feed metadata, not full-text reporting or official threat assessments. Follow the source link on each brief.
+
+    #{Enum.join(lines, "\\n")}
+    """
+  end
+
+  defp key_authors_section do
+    lines =
+      Authors.list_top_quoted_authors(20)
+      |> Enum.map(fn {author, quote_count} ->
+        "- [#{author.name}](#{SEO.author_url(author)}): #{quote_count} verified quotes"
+      end)
+
+    """
+    ## Key authors
+
+    #{Enum.join(lines, "\n")}
+    """
+  end
+
+  defp top_statements_section do
+    lines =
+      Statements.list_statements(order: :opinion_likes_count_desc, limit: 20)
+      |> Enum.map(fn statement ->
+        "- [#{statement.title}](#{url(~p"/p/#{statement.slug}")}): #{statement.opinions_count} opinions"
+      end)
+
+    """
+    ## Top statements
+
+    #{Enum.join(lines, "\n")}
+    """
+  end
+
+  defp mcp_section do
+    mcp_url = url(~p"/mcp")
+
+    """
+    ## MCP server (for AI agents)
+
+    If you are an AI assistant, connect to the APX MCP server to interact
+    with the platform programmatically. No API key is required for public,
+    read-only tools; a key (from the user's Settings page) unlocks write access.
+
+    - MCP endpoint (Streamable HTTP): #{mcp_url}
+    - Authentication for keyed tools: append `?key=YOUR_API_KEY` to the MCP endpoint
+    - Human-readable tool docs: #{url(~p"/mcp-tools")}
+    - Claude setup guide: #{url(~p"/mcp/claude")}
+
+    ### Available tools
+
+    Statements (policy proposals/claims people vote on):
+    - statements_list: list statements; find statement IDs for other tools
+    - statement_halls: a statement's halls (topics) by ID
+    - statement_authors: authors with a sourced quote on a statement
+    - statements_create: create a statement (creator/admin)
+    - statement_populate: queue AI quote discovery for a statement (admin)
+    - statements_halls_update: set the halls on a statement (own/admin)
+
+    Authors (people whose opinions and votes are tracked):
+    - authors_search: search authors by name
+    - authors_list: list authors, filterable by country
+    - authors_create: create an author (moderator/creator/admin)
+    - authors_update: update an author (moderator/creator/admin)
+
+    Opinions (quotes/positions attributed to authors, linked to statements):
+    - opinions_show: view an opinion with its statements and votes
+    - opinions_create: create an opinion; include source_url (web) or source_text (book/PDF/paywalled passage) to make it a quote
+    - opinions_edit: edit an opinion
+    - opinions_delete: delete an opinion
+    - opinions_statements_add: link an opinion to a statement, set the vote, and optionally trigger relevance verification
+    - opinions_statements_remove: unlink an opinion from a statement
+
+    Quotes & verification (sourced opinions):
+    - quotes_search: keyword search within a statement (public), or semantic search across all quotes (requires an API key)
+    - quotes_list: list quotes with author, source, status and vote; order_by can be id (default) or the quote's date
+    - quotes_random_unverified: random quotes needing reviewable verification work, excluding quote-level disputed/unverifiable rows
+    - quotes_recent_unverified: recent quotes needing reviewable verification work, excluding quote-level disputed/unverifiable rows
+    - quotes_verify: verify a quote is authentic (really said, accurately transcribed) (moderator/admin)
+    - opinion_statements_verify: verify a quote is relevant to a statement (moderator/admin)
+
+    Votes (how authors vote on statements):
+    - votes_create: create a vote (for / against / abstain)
+    - votes_edit: edit an existing vote
+    - votes_verify: verify a vote's answer is correct for the statement given its opinion (moderator/admin)
+
+    ## What you can do
+
+    - Find sourced quotes for a statement and add them via the opinions and votes tools.
+    - Help review and verify unverified quotes against their sources.
+    - Browse what real people and AIs think about a policy proposal.
+    """
+  end
+
+  def mcp_claude(conn, _params) do
+    render(conn, :mcp_claude)
+  end
+
+  def mcp_chatgpt(conn, _params) do
+    render(conn, :mcp_chatgpt)
+  end
+
+  def redirect_to_questions(conn, _params) do
+    conn
+    |> redirect(to: ~p"/")
+    |> halt()
+  end
+
+  def redirect_to_home(conn, _params) do
+    conn
+    |> redirect(to: ~p"/")
+    |> halt()
+  end
+
+  def redirect_to_fact_checker(conn, _params) do
+    conn
+    |> redirect(to: ~p"/intelligence")
+    |> halt()
+  end
+
+  def email_login_waiting_list(conn, _params) do
+    render(conn, :email_login_waiting_list, layout: false)
+  end
+
+  def email_login_waiting_list_thanks(conn, _params) do
+    conn
+    |> put_flash(:info, "Thanks for joining the waiting list! We'll be in touch.")
+    |> redirect(to: ~p"/")
+  end
+end

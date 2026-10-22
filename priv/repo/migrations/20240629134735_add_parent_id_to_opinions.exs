@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddParentIdToOpinions do
+defmodule APX.Repo.Migrations.AddParentIdToOpinions do
   use Ecto.Migration
 
   def change do

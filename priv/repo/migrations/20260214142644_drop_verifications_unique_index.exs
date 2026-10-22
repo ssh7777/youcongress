@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.DropVerificationsUniqueIndex do
+defmodule APX.Repo.Migrations.DropVerificationsUniqueIndex do
   use Ecto.Migration
 
   def up do

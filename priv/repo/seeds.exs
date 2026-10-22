@@ -3,32 +3,45 @@
 #     mix run priv/repo/seeds.exs
 #
 
-defmodule YouCongress.Seeds do
-  alias YouCongress.Accounts
-  alias YouCongress.Authors
-  alias YouCongress.Statements
-  alias YouCongress.Opinions
-  alias YouCongress.Votes
+defmodule APX.Seeds do
+  alias APX.Accounts
+  alias APX.Authors
+  alias APX.Statements
+  alias APX.Opinions
+  alias APX.Votes
 
   def run do
-    user = find_or_create_user()
+    case {
+      System.get_env("APX_SEED_DEMO"),
+      System.get_env("APX_SEED_ADMIN_EMAIL"),
+      System.get_env("APX_SEED_ADMIN_PASSWORD"),
+      Application.get_env(:apx, :env)
+    } do
+      {"true", email, password, env} when is_binary(email) and email != "" and is_binary(password) and password != "" and env != :prod ->
+        user = find_or_create_user(email, password)
 
-    if user do
-      authors = create_authors()
-      statements = create_statements(user)
-      create_opinions_and_votes(user, authors, statements)
+        if user do
+          authors = create_authors()
+          statements = create_statements(user)
+          create_opinions_and_votes(user, authors, statements)
+        end
+
+      _ ->
+        IO.puts(
+          "Skipping demo seeds. For a non-production database, set APX_SEED_DEMO=true and provide APX_SEED_ADMIN_EMAIL and APX_SEED_ADMIN_PASSWORD."
+        )
     end
   end
 
-  defp find_or_create_user do
+  defp find_or_create_user(email, password) do
     user_attrs = %{
-      "email" => "admin@youcongress.org",
-      "password" => "admin:1234"
+      "email" => email,
+      "password" => password
     }
 
     author_attrs = %{
       "name" => "Admin",
-      "bio" => "YouCongress admin"
+      "bio" => "APX admin"
     }
 
     if user = Accounts.get_user_by_email(user_attrs["email"]) do
@@ -184,4 +197,4 @@ defmodule YouCongress.Seeds do
   end
 end
 
-YouCongress.Seeds.run()
+APX.Seeds.run()

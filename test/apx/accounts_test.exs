@@ -1,0 +1,778 @@
+defmodule APX.AccountsTest do
+  use APX.DataCase
+
+  alias APX.Accounts
+
+  import APX.AccountsFixtures
+  import APX.CountriesFixtures
+  alias APX.Accounts.{ApiKey, User, UserToken}
+
+  describe "get_user_by_email/1" do
+    test "does not return the user if the email does not exist" do
+      refute Accounts.get_user_by_email("unknown@example.com")
+    end
+
+    test "returns the user if the email exists" do
+      %{id: id} = user = user_fixture()
+      assert %User{id: ^id} = Accounts.get_user_by_email(user.email)
+    end
+
+    test "returns the user case-insensitively" do
+      %{id: id} = user_fixture(%{"email" => "MixedCase.User@example.com"}, %{}, false)
+      assert %User{id: ^id} = Accounts.get_user_by_email("MIXEDCASE.USER@EXAMPLE.COM")
+    end
+  end
+
+  describe "get_user_by_email_and_password/2" do
+    test "does not return the user if the email does not exist" do
+      refute Accounts.get_user_by_email_and_password("unknown@example.com", "hello world!")
+    end
+
+    test "does not return the user if the password is not valid" do
+      user = user_fixture()
+      refute Accounts.get_user_by_email_and_password(user.email, "invalid")
+    end
+
+    test "returns the user case-insensitively if the password is valid" do
+      password = valid_user_password()
+
+      {:ok, %{user: user}} =
+        Accounts.register_user(%{
+          "email" => "Login.User@example.com",
+          "password" => password
+        })
+
+      assert %User{id: id} =
+               Accounts.get_user_by_email_and_password("LOGIN.USER@EXAMPLE.COM", password)
+
+      assert id == user.id
+    end
+  end
+
+  describe "get_user!/1" do
+    test "raises if id is invalid" do
+      assert_raise Ecto.NoResultsError, fn ->
+        Accounts.get_user!(-1)
+      end
+    end
+
+    test "returns the user with the given id" do
+      %{id: id} = user = user_fixture()
+      assert %User{id: ^id} = Accounts.get_user!(user.id)
+    end
+  end
+
+  describe "register_user/1" do
+    test "validates email uniqueness" do
+      %{email: email} = user_fixture()
+
+      {:error, :user, changeset, _} =
+        Accounts.register_user(%{"email" => email, "password" => "validpassword123"})
+
+      assert "has already been taken" in errors_on(changeset).email
+    end
+
+    test "validates email uniqueness case-insensitively" do
+      %{email: email} = user_fixture()
+
+      {:error, :user, changeset, _} =
+        Accounts.register_user(%{
+          "email" => String.upcase(email),
+          "password" => "validpassword123"
+        })
+
+      assert "has already been taken" in errors_on(changeset).email
+    end
+
+    test "registers with email/password" do
+      email = "whatever@gmail.com"
+      password = "d?we2424D-D2sm@"
+
+      {:ok, %{user: user}} = Accounts.register_user(%{"email" => email, "password" => password})
+      assert user.email == email
+      assert user.hashed_password
+      assert user.email_confirmed_at == nil
+      assert user.phone_number_confirmed_at == nil
+    end
+
+    test "normalizes email to lowercase" do
+      email = "Whatever#{System.unique_integer()}@Gmail.COM"
+
+      {:ok, %{user: user}} =
+        Accounts.register_user(%{"email" => email, "password" => valid_user_password()})
+
+      assert user.email == String.downcase(email)
+    end
+  end
+
+  describe "register_passwordless_user/2" do
+    test "registers an email user without a password" do
+      email = "Passwordless.User#{System.unique_integer()}@Example.com"
+
+      assert {:ok, %{user: user, author: author}} =
+               Accounts.register_passwordless_user(
+                 %{"email" => email},
+                 %{"name" => "Passwordless User"}
+               )
+
+      assert user.email == String.downcase(email)
+      assert user.hashed_password == nil
+      assert user.email_confirmed_at == nil
+      assert author.name == "Passwordless User"
+    end
+
+    test "validates email without requiring a password" do
+      assert {:error, :user, changeset, _changes} =
+               Accounts.register_passwordless_user(%{"email" => "invalid"})
+
+      assert "must have the @ sign and no spaces" in errors_on(changeset).email
+      refute Map.has_key?(errors_on(changeset), :password)
+    end
+  end
+
+  describe "change_user_registration/2" do
+    test "returns a changeset" do
+      assert %Ecto.Changeset{} = changeset = Accounts.change_user_registration(%User{})
+      assert changeset.required == [:password, :email]
+    end
+
+    test "allows fields to be set" do
+      email = unique_user_email()
+      password = valid_user_password()
+
+      changeset =
+        Accounts.change_user_registration(
+          %User{},
+          valid_user_attributes(%{"email" => email, "password" => password})
+        )
+
+      assert changeset.valid?
+      assert get_change(changeset, :email) == email
+      assert get_change(changeset, :password) == password
+      assert is_nil(get_change(changeset, :hashed_password))
+    end
+  end
+
+  describe "change_passwordless_registration/2" do
+    test "requires email but not password" do
+      changeset = Accounts.change_passwordless_registration(%User{})
+
+      assert changeset.required == [:email]
+      refute :password in changeset.required
+    end
+  end
+
+  describe "change_user_email/2" do
+    test "returns a user changeset" do
+      assert %Ecto.Changeset{} = changeset = Accounts.change_user_email(%User{})
+      assert changeset.required == [:email]
+    end
+  end
+
+  describe "phone verification" do
+    test "confirm_user_phone/1 sets the author country from the phone prefix" do
+      phone_country = country_fixture(name: "Phone Spain", phone_prefix: "+34")
+      declared_country = country_fixture(name: "Declared Country", phone_prefix: "+999")
+
+      user =
+        user_fixture(
+          %{},
+          %{
+            name: "Phone User",
+            bio: "Bio",
+            twin_origin: false,
+            country_id: declared_country.id,
+            location: "Declared location"
+          },
+          false
+        )
+
+      {:ok, user} = Accounts.update_user_phone_number(user, "+34611111111")
+
+      assert {:ok, confirmed_user} = Accounts.confirm_user_phone(user)
+      assert confirmed_user.phone_number_confirmed_at
+
+      author = APX.Authors.get_author!(user.author_id)
+      assert author.country_id == phone_country.id
+      assert author.location == nil
+    end
+
+    test "update_user_phone_number/2 clears confirmation when the number changes" do
+      user = user_fixture(%{}, %{name: "Phone User", bio: "Bio", twin_origin: false}, false)
+
+      {:ok, user} = Accounts.update_user_phone_number(user, "+34611111111")
+      {:ok, user} = Accounts.confirm_user_phone(user)
+      assert user.phone_number_confirmed_at
+
+      {:ok, user} = Accounts.update_user_phone_number(user, "+33611111111")
+      assert user.phone_number_confirmed_at == nil
+    end
+  end
+
+  describe "apply_user_email/3" do
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "requires email to change", %{user: user} do
+      {:error, changeset} = Accounts.apply_user_email(user, valid_user_password(), %{})
+      assert %{email: ["did not change"]} = errors_on(changeset)
+    end
+
+    test "validates email", %{user: user} do
+      {:error, changeset} =
+        Accounts.apply_user_email(user, valid_user_password(), %{email: "not valid"})
+
+      assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
+    end
+
+    test "validates maximum value for email for security", %{user: user} do
+      too_long = String.duplicate("db", 100)
+
+      {:error, changeset} =
+        Accounts.apply_user_email(user, valid_user_password(), %{email: too_long})
+
+      assert "should be at most 160 character(s)" in errors_on(changeset).email
+    end
+
+    test "validates email uniqueness", %{user: user} do
+      %{email: email} = user_fixture()
+      password = valid_user_password()
+
+      {:error, changeset} = Accounts.apply_user_email(user, password, %{email: email})
+
+      assert "has already been taken" in errors_on(changeset).email
+    end
+
+    test "validates email uniqueness case-insensitively", %{user: user} do
+      %{email: email} = user_fixture()
+      password = valid_user_password()
+
+      {:error, changeset} =
+        Accounts.apply_user_email(user, password, %{email: String.upcase(email)})
+
+      assert "has already been taken" in errors_on(changeset).email
+    end
+  end
+
+  describe "deliver_user_update_email_instructions/3" do
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "sends token through notification", %{user: user} do
+      token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_update_email_instructions(user, "current@example.com", url)
+        end)
+
+      {:ok, token} = Base.url_decode64(token, padding: false)
+      assert user_token = Repo.get_by(UserToken, token: :crypto.hash(:sha256, token))
+      assert user_token.user_id == user.id
+      assert user_token.sent_to == user.email
+      assert user_token.context == "change:current@example.com"
+    end
+  end
+
+  describe "change_user_password/2" do
+    test "returns a user changeset" do
+      assert %Ecto.Changeset{} = changeset = Accounts.change_user_password(%User{})
+      assert changeset.required == [:password]
+    end
+
+    test "allows fields to be set" do
+      changeset =
+        Accounts.change_user_password(%User{}, %{
+          "password" => "new valid password"
+        })
+
+      assert changeset.valid?
+      assert get_change(changeset, :password) == "new valid password"
+      assert is_nil(get_change(changeset, :hashed_password))
+    end
+  end
+
+  describe "update_user_password/3" do
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "validates password", %{user: user} do
+      {:error, changeset} =
+        Accounts.update_user_password(user, valid_user_password(), %{
+          password: "short",
+          password_confirmation: "another"
+        })
+
+      assert %{
+               password: ["should be at least 8 character(s)"],
+               password_confirmation: ["does not match password"]
+             } = errors_on(changeset)
+    end
+
+    test "validates maximum values for password for security", %{user: user} do
+      too_long = String.duplicate("db", 100)
+
+      {:error, changeset} =
+        Accounts.update_user_password(user, valid_user_password(), %{password: too_long})
+
+      assert "should be at most 72 character(s)" in errors_on(changeset).password
+    end
+
+    test "validates current password", %{user: user} do
+      {:error, changeset} =
+        Accounts.update_user_password(user, "invalid", %{password: valid_user_password()})
+
+      assert %{current_password: ["is not valid"]} = errors_on(changeset)
+    end
+  end
+
+  describe "generate_user_session_token/1" do
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "generates a token", %{user: user} do
+      token = Accounts.generate_user_session_token(user)
+      assert user_token = Repo.get_by(UserToken, token: token)
+      assert user_token.context == "session"
+
+      # Creating the same token for another user should fail
+      assert_raise Ecto.ConstraintError, fn ->
+        Repo.insert!(%UserToken{
+          token: user_token.token,
+          user_id: user_fixture().id,
+          context: "session"
+        })
+      end
+    end
+  end
+
+  describe "get_user_by_session_token/1" do
+    setup do
+      user = user_fixture()
+      token = Accounts.generate_user_session_token(user)
+      %{user: user, token: token}
+    end
+
+    test "returns user by token", %{user: user, token: token} do
+      assert session_user = Accounts.get_user_by_session_token(token)
+      assert session_user.id == user.id
+    end
+
+    test "does not return user for invalid token" do
+      refute Accounts.get_user_by_session_token("oops")
+    end
+
+    test "does not return user for expired token", %{token: token} do
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      refute Accounts.get_user_by_session_token(token)
+    end
+  end
+
+  describe "delete_user_session_token/1" do
+    test "deletes the token" do
+      user = user_fixture()
+      token = Accounts.generate_user_session_token(user)
+      assert Accounts.delete_user_session_token(token) == :ok
+      refute Accounts.get_user_by_session_token(token)
+    end
+  end
+
+  describe "generate_live_login_token/1" do
+    test "stores the token with live_login context" do
+      user = user_fixture()
+      _token = Accounts.generate_live_login_token(user)
+
+      assert %UserToken{context: "live_login", user_id: user_id} =
+               Repo.get_by(UserToken, context: "live_login", user_id: user.id)
+
+      assert user_id == user.id
+    end
+  end
+
+  describe "consume_live_login_token/1" do
+    setup do
+      user = user_fixture(%{}, %{}, false)
+      token = Accounts.generate_live_login_token(user)
+      %{user: user, token: token}
+    end
+
+    test "returns the user and deletes the token", %{user: user, token: token} do
+      assert {:ok, returned_user} = Accounts.consume_live_login_token(token)
+      assert returned_user.id == user.id
+      assert Repo.all(UserToken) == []
+    end
+
+    test "returns error for invalid token" do
+      assert Accounts.consume_live_login_token("invalid") == :error
+    end
+
+    test "returns error for expired token", %{token: token} do
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      assert Accounts.consume_live_login_token(token) == :error
+    end
+  end
+
+  describe "deliver_user_magic_login_instructions/2" do
+    test "sends a hashed, short-lived login token" do
+      user = user_fixture()
+
+      token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_magic_login_instructions(user, url)
+        end)
+
+      {:ok, decoded_token} = Base.url_decode64(token, padding: false)
+
+      assert user_token =
+               Repo.get_by(UserToken,
+                 token: UserToken.hash_token(decoded_token),
+                 context: "magic_login"
+               )
+
+      assert user_token.user_id == user.id
+      assert user_token.sent_to == user.email
+    end
+
+    test "invalidates older magic links when a new one is requested" do
+      user = user_fixture()
+
+      first_token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_magic_login_instructions(user, url)
+        end)
+
+      _second_token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_magic_login_instructions(user, url)
+        end)
+
+      assert Accounts.consume_magic_login_token(first_token) == :error
+    end
+  end
+
+  describe "consume_magic_login_token/1" do
+    setup do
+      user = user_fixture(%{}, %{}, false)
+
+      token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_magic_login_instructions(user, url)
+        end)
+
+      %{user: user, token: token}
+    end
+
+    test "returns the user, confirms the email, and deletes the token", %{
+      user: user,
+      token: token
+    } do
+      assert {:ok, returned_user} = Accounts.consume_magic_login_token(token)
+      assert returned_user.id == user.id
+      assert returned_user.email_confirmed_at
+      refute Repo.get_by(UserToken, context: "magic_login", user_id: user.id)
+    end
+
+    test "can only be used once", %{token: token} do
+      assert {:ok, _user} = Accounts.consume_magic_login_token(token)
+      assert Accounts.consume_magic_login_token(token) == :error
+    end
+
+    test "returns an error for an invalid token" do
+      assert Accounts.consume_magic_login_token("invalid") == :error
+    end
+
+    test "returns an error for an expired token", %{token: token} do
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      assert Accounts.consume_magic_login_token(token) == :error
+    end
+  end
+
+  describe "get_user_by_api_key/1" do
+    test "stores only a token hash and returns the API key owner" do
+      user = user_fixture()
+
+      {:ok, api_key} =
+        Accounts.create_api_key_for_user(user, %{
+          "name" => "CLI",
+          "scope" => :write
+        })
+
+      assert is_binary(api_key.token)
+      persisted_api_key = Repo.get!(ApiKey, api_key.id)
+      assert persisted_api_key.token == nil
+      assert persisted_api_key.token_hash == ApiKey.hash_token(api_key.token)
+      assert persisted_api_key.token_prefix == String.slice(api_key.token, 0, 8)
+
+      assert {:ok, fetched_user} = Accounts.get_user_by_api_key(api_key.token)
+      assert fetched_user.id == user.id
+    end
+
+    test "enforces required API key scopes" do
+      user = user_fixture()
+
+      {:ok, api_key} =
+        Accounts.create_api_key_for_user(user, %{
+          "name" => "Read only",
+          "scope" => :read
+        })
+
+      assert {:ok, fetched_user} =
+               Accounts.get_user_by_api_key(api_key.token, required_scope: :read)
+
+      assert fetched_user.id == user.id
+
+      assert {:error, :insufficient_scope} =
+               Accounts.get_user_by_api_key(api_key.token, required_scope: :write)
+    end
+
+    test "rejects API keys for blocked users" do
+      user = user_fixture()
+
+      {:ok, api_key} =
+        Accounts.create_api_key_for_user(user, %{
+          "name" => "CLI",
+          "scope" => :write
+        })
+
+      {:ok, _blocked_user} = Accounts.update_role(user, "blocked")
+
+      assert {:error, :invalid_api_key} = Accounts.get_user_by_api_key(api_key.token)
+    end
+
+    test "returns an error for missing tokens" do
+      assert {:error, :missing_api_key} = Accounts.get_user_by_api_key(nil)
+      assert {:error, :missing_api_key} = Accounts.get_user_by_api_key("   ")
+    end
+
+    test "returns an error for unknown tokens" do
+      assert {:error, :invalid_api_key} = Accounts.get_user_by_api_key("invalid")
+    end
+
+    test "allows owners to revoke keys and prevents revoking another user's key" do
+      owner = user_fixture()
+      other_user = user_fixture()
+
+      {:ok, api_key} =
+        Accounts.create_api_key_for_user(owner, %{"name" => "CLI", "scope" => :write})
+
+      assert {:error, :not_found} =
+               Accounts.revoke_api_key_for_user(other_user, api_key.id)
+
+      assert {:ok, _owner} = Accounts.get_user_by_api_key(api_key.token)
+      assert :ok = Accounts.revoke_api_key_for_user(owner, api_key.id)
+      assert {:error, :invalid_api_key} = Accounts.get_user_by_api_key(api_key.token)
+      refute Repo.get(ApiKey, api_key.id)
+    end
+  end
+
+  describe "deliver_user_confirmation_instructions/2" do
+    setup do
+      %{user: user_fixture(%{}, %{}, false)}
+    end
+
+    test "sends token through notification", %{user: user} do
+      code =
+        extract_confirmation_code(fn url ->
+          Accounts.deliver_user_confirmation_instructions(user, url)
+        end)
+
+      assert String.length(code) == 6
+      assert user_token = Repo.get_by(UserToken, token: UserToken.hash_token(code))
+      assert user_token.user_id == user.id
+      assert user_token.sent_to == user.email
+      assert user_token.context == "confirm"
+    end
+  end
+
+  describe "confirm_user_with_code/2" do
+    setup do
+      user = user_fixture(%{}, %{}, false)
+
+      code =
+        extract_confirmation_code(fn url ->
+          Accounts.deliver_user_confirmation_instructions(user, url)
+        end)
+
+      %{user: user, code: code}
+    end
+
+    test "confirms the email with a valid code", %{user: user, code: code} do
+      assert {:ok, confirmed_user} = Accounts.confirm_user_with_code(user, code)
+      assert confirmed_user.email_confirmed_at
+      assert confirmed_user.email_confirmed_at != user.email_confirmed_at
+      assert Repo.get!(User, user.id).email_confirmed_at
+      refute Repo.get_by(UserToken, user_id: user.id)
+    end
+
+    test "does not confirm with invalid code", %{user: user} do
+      assert {:error, :invalid_code} = Accounts.confirm_user_with_code(user, "000000")
+      refute Repo.get!(User, user.id).email_confirmed_at
+      assert Repo.get_by(UserToken, user_id: user.id)
+    end
+
+    test "does not confirm email if code expired", %{user: user, code: code} do
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      assert {:error, :expired} = Accounts.confirm_user_with_code(user, code)
+      refute Repo.get!(User, user.id).email_confirmed_at
+      assert Repo.get_by(UserToken, user_id: user.id)
+    end
+  end
+
+  describe "inspect/2 for the User module" do
+    test "does not include password" do
+      refute inspect(%User{password: "123456"}) =~ "password: \"123456\""
+    end
+  end
+
+  describe "update_role/2" do
+    test "sets admin role" do
+      user = user_fixture()
+      {:ok, user} = Accounts.update_role(user, "admin")
+      assert user.role == "admin"
+      assert Accounts.get_user!(user.id).role == "admin"
+    end
+
+    test "revokes every session and disconnects its sockets when a role changes" do
+      user = admin_fixture()
+      first_token = Accounts.generate_user_session_token(user)
+      second_token = Accounts.generate_user_session_token(user)
+
+      Enum.each([first_token, second_token], fn token ->
+        APXWeb.Endpoint.subscribe("users_sessions:#{Base.url_encode64(token)}")
+      end)
+
+      assert {:ok, updated_user} = Accounts.update_role(user, "user")
+      assert updated_user.role == "user"
+      refute Accounts.get_user_by_session_token(first_token)
+      refute Accounts.get_user_by_session_token(second_token)
+
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    end
+
+    test "revokes API keys when an account is blocked" do
+      user = user_fixture()
+
+      {:ok, api_key} =
+        Accounts.create_api_key_for_user(user, %{"name" => "Automation", "scope" => :write})
+
+      assert {:ok, blocked_user} = Accounts.update_role(user, "blocked")
+      assert blocked_user.role == "blocked"
+      assert {:error, :invalid_api_key} = Accounts.get_user_by_api_key(api_key.token)
+      refute Repo.get(ApiKey, api_key.id)
+    end
+  end
+
+  describe "x_register_user/2" do
+    test "creates author and user with X profile data" do
+      author_attrs = %{
+        twitter_id_str: "12345",
+        twitter_username: "xuser",
+        name: "X User",
+        profile_image_url: "https://example.com/pic.jpg",
+        description: "Bio",
+        followers_count: 100,
+        friends_count: 50,
+        verified: false,
+        twin_origin: false
+      }
+
+      assert {:ok, %{user: user, author: author}} =
+               Accounts.x_register_user(%{"email" => "xuser@example.com"}, author_attrs)
+
+      assert user.author_id == author.id
+      assert author.twitter_username == "xuser"
+      assert author.twitter_id_str == "12345"
+      assert author.twin_origin == false
+    end
+
+    test "sets twin_origin to false" do
+      author_attrs = %{
+        twitter_username: "xuser2",
+        name: "X User 2",
+        twin_origin: true
+      }
+
+      {:ok, %{author: author}} =
+        Accounts.x_register_user(%{"email" => "xuser2@example.com"}, author_attrs)
+
+      # twin_origin should be set to false regardless of input
+      assert author.twin_origin == false
+    end
+  end
+
+  describe "x_register_user_with_existing_author/3" do
+    test "creates user linked to existing author and updates author" do
+      author =
+        APX.AuthorsFixtures.author_fixture(
+          twitter_username: "existing",
+          twin_origin: true
+        )
+
+      update_attrs = %{
+        twitter_id_str: "99999",
+        twitter_username: "existing_updated",
+        name: "Updated Name"
+      }
+
+      assert {:ok, %{user: user, author: updated_author}} =
+               Accounts.x_register_user_with_existing_author(
+                 %{"email" => "existing_user@example.com"},
+                 author,
+                 update_attrs
+               )
+
+      assert user.author_id == author.id
+      assert updated_author.twitter_id_str == "99999"
+      assert updated_author.twin_origin == false
+    end
+  end
+
+  describe "get_user_by_author_id/1" do
+    test "returns user when found" do
+      user = user_fixture()
+      user_with_author = Repo.preload(user, :author)
+
+      found_user = Accounts.get_user_by_author_id(user_with_author.author.id)
+      assert found_user.id == user.id
+    end
+
+    test "returns nil when no user has the author_id" do
+      author = APX.AuthorsFixtures.author_fixture()
+      assert Accounts.get_user_by_author_id(author.id) == nil
+    end
+  end
+
+  describe "get_user_by_twitter_id_str_or_username/2" do
+    test "returns user by twitter_id_str" do
+      user =
+        user_fixture(%{}, %{
+          twitter_id_str: "111222333",
+          twitter_username: "user_by_id",
+          name: "User By ID",
+          twin_origin: false
+        })
+
+      found = Accounts.get_user_by_twitter_id_str_or_username("111222333", "other_username")
+      assert found.id == user.id
+    end
+
+    test "falls back to twitter_username when twitter_id_str is nil" do
+      user =
+        user_fixture(%{}, %{
+          twitter_username: "fallback_user",
+          name: "Fallback User",
+          twin_origin: false
+        })
+
+      found = Accounts.get_user_by_twitter_id_str_or_username(nil, "fallback_user")
+      assert found.id == user.id
+    end
+
+    test "returns nil when neither match" do
+      refute Accounts.get_user_by_twitter_id_str_or_username("nonexistent", "nonexistent")
+    end
+  end
+end

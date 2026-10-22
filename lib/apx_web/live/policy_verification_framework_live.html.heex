@@ -1,0 +1,160 @@
+<article id="policy-verification-framework" class="pb-12 text-apx-text">
+  <header class="py-10 sm:py-14">
+    <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <p class="apx-mono-label">APX / Independent Policy Verification Framework</p>
+      <button
+        type="button"
+        data-copy-current-url
+        data-copy-url={~p"/independent-policy-verification-framework"}
+        data-copy-success-label="Link copied"
+        class="rounded-lg border border-apx-line px-3 py-2 font-medium text-apx-text hover:border-apx-cyan"
+      >
+        Share this guide
+      </button>
+    </div>
+    <h1 class="mt-7 max-w-4xl text-4xl font-bold leading-tight tracking-tight sm:text-6xl">
+      Independent Policy Verification Framework
+    </h1>
+    <p class="mt-6 max-w-3xl text-xl leading-8 text-apx-muted">
+      A practical lens for examining coordination failures, policy incentives, evidence, and the
+      limits of consensus metrics.
+    </p>
+    <p class="mt-4 max-w-3xl leading-7 text-apx-muted">
+      Individually rational choices can add up to collective harm. A useful policy review asks not
+      only what participants prefer, but what incentives, verification, and rules shape their
+      choices.
+    </p>
+  </header>
+
+  <section aria-labelledby="framework-principles" class="border-t border-apx-line py-10">
+    <p class="apx-mono-label">01 / Verification principles</p>
+    <h2 id="framework-principles" class="mt-2 text-3xl font-bold tracking-tight">
+      Evidence, incentives, and limits
+    </h2>
+    <div class="mt-6 grid gap-4 sm:grid-cols-3">
+      <div class="apx-panel p-5">
+        <h3 class="font-semibold">Empirical Consensus Metrics</h3>
+        <p class="mt-2 text-sm leading-6 text-apx-muted">
+          Summarize observed positions and disagreement. Participation is not automatically
+          representative of experts or the public.
+        </p>
+      </div>
+      <div class="apx-panel p-5">
+        <h3 class="font-semibold">Non-Deterministic System Verification</h3>
+        <p class="mt-2 text-sm leading-6 text-apx-muted">
+          Human and automated checks can produce different, fallible results. A verification status
+          is evidence about a review, not proof of universal truth.
+        </p>
+      </div>
+      <div class="apx-panel p-5">
+        <h3 class="font-semibold">Sovereign Telemetry</h3>
+        <p class="mt-2 text-sm leading-6 text-apx-muted">
+          Track source-linked public developments and policy records without treating a dashboard
+          as an official government assessment.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section
+    id="coordination-scenario"
+    aria-labelledby="scenario-title"
+    class="scroll-mt-6 rounded-2xl border border-apx-line bg-apx-surface p-5 sm:p-8"
+  >
+    <p class="apx-mono-label">02 / Explore an incentive scenario</p>
+    <h2 id="scenario-title" class="mt-2 text-3xl font-bold tracking-tight">
+      Two AI labs. One shared future.
+    </h2>
+    <p class="mt-4 leading-7 text-apx-muted">
+      Imagine two labs developing increasingly capable AI. Both may prefer strong safeguards, yet
+      each can fear that extra checks will let a competitor move ahead. This is a hypothetical model,
+      not a prediction about any named organization.
+    </p>
+    <p id="scenario-instructions" class="mt-4 font-medium text-apx-text">
+      Choose a priority for each lab. Try all four combinations.
+    </p>
+    <div aria-describedby="scenario-instructions" class="mt-5 grid gap-5 sm:grid-cols-2">
+      <.lab_choice lab="a" selected={@lab_a} />
+      <.lab_choice lab="b" selected={@lab_b} />
+    </div>
+    <% result = outcome(@lab_a, @lab_b) %>
+    <div
+      id="race-outcome"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      class="mt-6 rounded-xl border border-apx-line bg-[#0D1421] p-5 sm:p-6"
+    >
+      <p class="apx-mono-label">Scenario output</p>
+      <h3 class="mt-2 text-xl font-bold text-apx-text">{result.title}</h3>
+      <dl class="mt-5 grid gap-5 sm:grid-cols-2">
+        <div>
+          <dt class="font-semibold">Lab A</dt>
+          <dd class="mt-1 leading-6 text-apx-muted">{result.a}</dd>
+        </div>
+        <div>
+          <dt class="font-semibold">Lab B</dt>
+          <dd class="mt-1 leading-6 text-apx-muted">{result.b}</dd>
+        </div>
+        <div class="border-t border-apx-line pt-4 sm:col-span-2">
+          <dt class="font-semibold">Shared outcome</dt>
+          <dd class="mt-1 leading-6 text-apx-muted">{result.shared}</dd>
+        </div>
+      </dl>
+      <p class="mt-5 rounded-lg border-l-4 border-apx-cyan bg-apx-cyan/5 p-4 leading-7 text-apx-text">
+        <strong>Incentive pressure:</strong> {result.pressure}
+      </p>
+    </div>
+    <p class="mt-5 text-sm leading-6 text-apx-muted">
+      <strong class="text-apx-text">A model, not a prediction.</strong>
+      The scenario assumes faster development can confer a competitive advantage. In practice,
+      safeguards can also improve reliability and competitiveness; outcomes depend on technical
+      choices, institutions, and many actors.
+    </p>
+    <noscript>
+      <p class="mt-4 font-medium text-apx-muted">
+        Enable JavaScript to change the choices. If one lab chooses speed, it may pull ahead; if
+        both do, shared risks can increase without a lasting relative advantage.
+      </p>
+    </noscript>
+  </section>
+
+  <section aria-labelledby="verification-questions" class="border-t border-apx-line py-10">
+    <p class="apx-mono-label">03 / Test the policy</p>
+    <h2 id="verification-questions" class="mt-2 text-3xl font-bold tracking-tight">
+      Questions for a rigorous review
+    </h2>
+    <dl class="mt-6 divide-y divide-apx-line border-y border-apx-line">
+      <div
+        :for={{question, detail} <- [
+          {"What is the evidence?", "Separate directly sourced claims from interpretation and forecast."},
+          {"Who is affected?", "Identify public interests, institutions, and communities that are missing from the record."},
+          {"What would change incentives?", "Evaluate transparency, credible commitments, and the costs of non-compliance."},
+          {"How can claims be checked?", "Specify independent access, evaluation methods, and limits on what verification proves."}
+        ]}
+        class="grid gap-2 py-5 sm:grid-cols-[14rem_1fr] sm:gap-6"
+      >
+        <dt class="font-bold text-apx-text">{question}</dt>
+        <dd class="leading-7 text-apx-muted">{detail}</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section aria-labelledby="framework-boundaries" class="apx-panel p-6 sm:p-8">
+    <p class="apx-mono-label">04 / Scope and boundaries</p>
+    <h2 id="framework-boundaries" class="mt-2 text-2xl font-bold tracking-tight">
+      Decision support, not official certification
+    </h2>
+    <p class="mt-4 leading-7 text-apx-muted">
+      APX is an independent policy analytics project intended for researchers, parliamentarians,
+      committee clerks, and sovereign security leads. It is not currently a government standard,
+      registered non-profit institute, or government service. Its voting, source, and verification
+      records support scrutiny; they do not make binding decisions or certify an institution.
+    </p>
+    <div class="mt-6 flex flex-wrap gap-5 font-semibold text-apx-cyan">
+      <.link href={~p"/explore"} class="underline underline-offset-4">Explore policy proposals</.link>
+      <.link href={~p"/intelligence"} class="underline underline-offset-4">Open the intelligence hub</.link>
+      <.link href={~p"/theory-of-change"} class="underline underline-offset-4">Read the theory of change</.link>
+    </div>
+  </section>
+</article>

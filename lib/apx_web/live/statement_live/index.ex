@@ -1,0 +1,734 @@
+defmodule APXWeb.StatementLive.Index do
+  use APXWeb, :live_view
+
+  require Logger
+
+  alias APX.Accounts.Permissions
+  alias APX.Authors
+  alias APX.Delegations
+  alias APX.Likes
+  alias APX.Opinions
+  alias APX.OpinionsStatements
+  alias APX.Votes
+  alias APX.Statements
+  alias APX.Statements.Statement
+  alias APX.Track
+  alias APXWeb.StatementLive.Index.HallHero
+  alias APXWeb.StatementLive.Index.HallNav
+  alias APXWeb.StatementLive.NewFormComponent
+  alias APXWeb.StatementLive.FormComponent
+  alias APXWeb.StatementLive.Index.Search
+  alias APXWeb.StatementLive.CastVoteComponent
+  alias APXWeb.Components.SwitchComponent
+  alias APX.Statements.StatementQueries
+  alias APX.Halls
+  alias APXWeb.StatementLive.VoteComponent
+  alias APXWeb.ReturnTo
+  alias APXWeb.SEO
+
+  @search_page_size 20
+  @search_tabs [:quotes, :delegates, :statements, :halls]
+
+  @impl true
+  def mount(params, session, socket) do
+    socket = assign_current_user(socket, session["user_token"])
+    current_user = socket.assigns.current_user
+    hall_name = hall_name_from_params(params)
+    min_opinions = min_opinions_from_params(params, hall_name)
+
+    socket =
+      socket
+      |> assign(:search, nil)
+      |> assign(:search_tab, :quotes)
+      |> assign(:halls, [])
+      |> assign(:authors, [])
+      |> assign(:statements, [])
+      |> assign(:quotes, [])
+      |> assign(:search_has_more, empty_search_has_more())
+      |> assign(:search_totals, empty_search_totals())
+      |> assign(:feed_order, :quote_date)
+      |> assign(:agreement, "all")
+      |> assign(:hall_name, hall_name)
+      |> assign(:hall_stats, nil)
+      |> assign(:new_poll_visible?, false)
+      |> assign(:current_user_delegation_ids, get_current_user_delegation_ids(current_user))
+      |> assign(:liked_opinion_ids, Likes.get_liked_opinion_ids(current_user))
+      |> assign(:page, 1)
+      |> assign(:per_page, 15)
+      |> assign(:min_opinions, min_opinions)
+      |> assign(:has_more_statements, true)
+      |> assign(:editing_opinion_id, nil)
+      |> assign(:can_create_statement?, Permissions.can_create_statement?(current_user))
+      |> stream(:opinion_cards, [], reset: true)
+      |> assign_cards(1)
+      |> assign(:pending_guest_votes, %{})
+      |> assign(:pending_vote_prompt, nil)
+      |> assign(:vote_auth_return_to, nil)
+      |> assign(:show_vote_auth_modal, false)
+
+    if connected?(socket) do
+      %{assigns: %{current_user: current_user}} = socket
+      Track.event("View Home", current_user)
+    end
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_params(params, url, socket) do
+    socket =
+      socket
+      |> assign(:return_to, ReturnTo.from_url(url))
+      |> maybe_assign_feed_scope(params)
+      |> apply_action(socket.assigns.live_action, params)
+      |> maybe_apply_search_params(params)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("load-more", _, socket) do
+    socket = assign_cards(socket, socket.assigns.page + 1)
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle-new-poll", _, socket) do
+    %{assigns: %{new_poll_visible?: new_poll_visible?, current_user: current_user}} = socket
+
+    if Permissions.can_create_statement?(current_user) do
+      socket =
+        socket
+        |> assign(new_poll_visible?: !new_poll_visible?)
+        |> maybe_assign_cards()
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :warning, "You don't have permission to create statements")}
+    end
+  end
+
+  def handle_event("search", %{"search" => ""}, socket) do
+    socket =
+      socket
+      |> assign_cards(1)
+      |> reset_search_results()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("search", %{"search" => search}, socket) do
+    case normalize_search(search) do
+      nil ->
+        socket =
+          socket
+          |> assign_cards(1)
+          |> reset_search_results()
+
+        {:noreply, socket}
+
+      normalized_search ->
+        {:noreply, perform_search(socket, normalized_search)}
+    end
+  end
+
+  def handle_event("search-tab", %{"tab" => "statements"}, socket) do
+    {:noreply, assign(socket, search_tab: :statements)}
+  end
+
+  def handle_event("search-tab", %{"tab" => "delegates"}, socket) do
+    {:noreply, assign(socket, search_tab: :delegates)}
+  end
+
+  def handle_event("search-tab", %{"tab" => "halls"}, socket) do
+    {:noreply, assign(socket, search_tab: :halls)}
+  end
+
+  def handle_event("search-tab", %{"tab" => "quotes"}, socket) do
+    {:noreply, assign(socket, search_tab: :quotes)}
+  end
+
+  def handle_event("load-more-search", _, %{assigns: %{search: nil}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("load-more-search", _, socket) do
+    {:noreply, load_more_search_results(socket)}
+  end
+
+  def handle_event("close-vote-auth-modal", _, socket) do
+    socket =
+      socket
+      |> assign(:show_vote_auth_modal, false)
+      |> assign(:pending_vote_prompt, nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle-switch", _, socket) do
+    feed_order =
+      case socket.assigns.feed_order do
+        :quote_date -> :added
+        :added -> :quote_date
+      end
+
+    socket =
+      socket
+      |> assign(:feed_order, feed_order)
+      |> assign_cards(1)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("filter-vote-share", %{"agreement" => agreement}, socket)
+      when agreement in ["all", "high", "low"] do
+    socket =
+      socket
+      |> assign(:agreement, agreement)
+      |> assign_cards(1)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("edit", %{"opinion_id" => opinion_id}, socket) do
+    opinion_id = String.to_integer(opinion_id)
+
+    # Find the card that contains this opinion and re-insert to force re-render
+    socket =
+      case find_card_by_opinion_id(socket.assigns.cards_by_id, opinion_id) do
+        nil ->
+          socket
+
+        card ->
+          stream_insert(socket, :opinion_cards, card)
+      end
+
+    {:noreply, assign(socket, :editing_opinion_id, opinion_id)}
+  end
+
+  def handle_event("cancel-edit", _, socket) do
+    editing_opinion_id = socket.assigns.editing_opinion_id
+
+    # Re-insert the card to force stream re-render
+    socket =
+      case find_card_by_opinion_id(socket.assigns.cards_by_id, editing_opinion_id) do
+        nil ->
+          socket
+
+        card ->
+          stream_insert(socket, :opinion_cards, card)
+      end
+
+    {:noreply, assign(socket, :editing_opinion_id, nil)}
+  end
+
+  def handle_event("update-opinion", %{"opinion_id" => opinion_id, "content" => content}, socket) do
+    opinion_id = String.to_integer(opinion_id)
+    opinion = Opinions.get_opinion!(opinion_id)
+
+    if socket.assigns.current_user &&
+         socket.assigns.current_user.author_id == opinion.author_id do
+      case Opinions.update_opinion(opinion, %{content: content, twin: false},
+             actor_user: socket.assigns.current_user
+           ) do
+        {:ok, _opinion} ->
+          socket =
+            socket
+            |> assign(:editing_opinion_id, nil)
+            |> assign_cards(1)
+            |> put_flash(:info, "Comment updated")
+
+          {:noreply, socket}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Error updating comment")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You can only edit your own comments")}
+    end
+  end
+
+  def handle_event("delete-comment", %{"opinion_id" => opinion_id}, socket) do
+    opinion_id = String.to_integer(opinion_id)
+    opinion = Opinions.get_opinion!(opinion_id, preload: [:statements])
+
+    if socket.assigns.current_user &&
+         socket.assigns.current_user.author_id == opinion.author_id do
+      # First, clear the opinion_id from the vote so it's preserved
+      case Votes.get_vote_by_opinion_id(opinion_id) do
+        nil -> :ok
+        vote -> Votes.update_vote(vote, %{opinion_id: nil})
+      end
+
+      # Then delete the opinion
+      {_count, nil} = Opinions.delete_opinion_and_descendants(opinion)
+
+      socket =
+        socket
+        |> assign_cards(1)
+        |> put_flash(:info, "Comment deleted")
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "You can only delete your own comments")}
+    end
+  end
+
+  @impl true
+  def handle_info({:put_flash, kind, msg}, socket) do
+    socket =
+      socket
+      |> clear_flash()
+      |> put_flash(kind, msg)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:voted, _vote}, socket) do
+    # Component manages its own state, no need to update parent assigns
+    {:noreply, socket}
+  end
+
+  def handle_info({:require_auth_to_vote, payload}, socket) do
+    {:noreply, record_guest_vote(socket, payload)}
+  end
+
+  def handle_info(_, socket), do: {:noreply, socket}
+
+  defp maybe_assign_cards(%{assigns: %{new_poll_visible?: true}} = socket), do: socket
+  defp maybe_assign_cards(socket), do: assign_cards(socket, 1)
+
+  defp find_card_by_opinion_id(cards_by_id, opinion_id) do
+    Enum.find_value(cards_by_id, fn {_card_id, card} ->
+      cond do
+        card.vote && card.vote.opinion && card.vote.opinion.id == opinion_id ->
+          card
+
+        opinion_in_votes_by_answer?(card.votes_by_answer, opinion_id) ->
+          card
+
+        true ->
+          nil
+      end
+    end)
+  end
+
+  defp opinion_in_votes_by_answer?(votes_by_answer, opinion_id) do
+    votes_by_answer
+    |> Map.values()
+    |> Enum.any?(fn
+      %{opinion: %{id: id}} when id == opinion_id -> true
+      _ -> false
+    end)
+  end
+
+  defp apply_action(socket, :new, _params) do
+    socket
+    |> assign(:page_title, "New Statement")
+    |> assign(:statement, %Statement{})
+  end
+
+  defp apply_action(socket, :index, %{"hall" => hall_name}) when hall_name != "all" do
+    # Computed here (handle_params) so the stats are part of the dead
+    # render that crawlers see.
+    hall_stats = Halls.hall_stats(hall_name)
+
+    socket
+    |> assign(
+      page_title: SEO.hall_title(hall_name),
+      skip_page_suffix: true,
+      page_description: SEO.hall_description(hall_name, hall_stats),
+      canonical_url: url(~p"/h/#{hall_name}"),
+      statement: %Statement{}
+    )
+    |> assign_stats(hall_stats)
+    |> assign(:full_width, true)
+    |> assign(:main_padding_classes, "px-2 pb-6 sm:px-4 lg:px-6")
+  end
+
+  defp apply_action(socket, :index, _params) do
+    hall_stats = Halls.all_stats()
+
+    socket
+    |> assign(
+      page_title: "Explore sourced quotes, claims, people and topics | APX",
+      skip_page_suffix: true,
+      page_description:
+        "Search sourced quotes and compare where experts, policymakers and citizens stand on consequential questions.",
+      canonical_url: url(~p"/explore"),
+      page_image: url(~p"/images/social-explore.png"),
+      page_image_alt:
+        "Explore sourced quotes, public figures, policy statements and topics on APX",
+      page_image_width: 1731,
+      page_image_height: 909,
+      statement: %Statement{}
+    )
+    |> assign_stats(hall_stats)
+    |> assign(:full_width, true)
+    |> assign(:main_padding_classes, "px-2 pb-6 sm:px-4 lg:px-6")
+  end
+
+  defp maybe_apply_search_params(socket, %{"search" => search} = params) when is_binary(search) do
+    case normalize_search(search) do
+      nil ->
+        socket
+
+      normalized_search ->
+        socket
+        |> perform_search(normalized_search)
+        |> assign_tab_from_params(Map.get(params, "tab"))
+    end
+  end
+
+  defp maybe_apply_search_params(socket, _params), do: socket
+
+  defp assign_tab_from_params(socket, tab)
+       when tab in ["quotes", "delegates", "statements", "halls"] do
+    assign(socket, :search_tab, String.to_existing_atom(tab))
+  end
+
+  defp assign_tab_from_params(socket, _tab), do: socket
+
+  defp load_votes(_, nil), do: %{}
+
+  defp load_votes(statement_ids, current_user) do
+    votes =
+      Votes.list_votes(
+        statement_ids: statement_ids,
+        author_ids: [current_user.author_id],
+        preload: []
+      )
+
+    Map.new(votes, fn vote ->
+      {vote.statement_id, vote}
+    end)
+  end
+
+  defp load_opinions(_, nil), do: %{}
+
+  defp load_opinions(statement_ids, current_user) do
+    OpinionsStatements.get_opinions_by_statement_ids(statement_ids, current_user)
+  end
+
+  defp load_delegate_ids(nil), do: []
+
+  defp load_delegate_ids(current_user) do
+    Delegations.delegate_ids_by_deleguee_id(current_user.author_id)
+  end
+
+  # Quote-date mode uses the quote's stated date. Added mode preserves the
+  # previous home feed ordering by most recently added opinion.
+  defp assign_cards(socket, page) do
+    %{
+      assigns: %{
+        current_user: current_user,
+        hall_name: hall_name,
+        feed_order: feed_order,
+        per_page: per_page
+      }
+    } = socket
+
+    offset = (page - 1) * per_page
+    min_opinions = socket.assigns.min_opinions
+
+    cards =
+      case feed_order do
+        :quote_date ->
+          StatementQueries.get_opinion_cards_by_quote_date(
+            hall_name: hall_name,
+            offset: offset,
+            limit: per_page,
+            min_opinions: min_opinions,
+            agreement: socket.assigns.agreement
+          )
+
+        :added ->
+          StatementQueries.get_opinion_cards_by_recency(
+            hall_name: hall_name,
+            offset: offset,
+            limit: per_page,
+            min_opinions: min_opinions,
+            agreement: socket.assigns.agreement
+          )
+
+        _ ->
+          StatementQueries.get_opinion_cards_by_quote_date(
+            hall_name: hall_name,
+            offset: offset,
+            limit: per_page,
+            min_opinions: min_opinions,
+            agreement: socket.assigns.agreement
+          )
+      end
+
+    if cards == [] do
+      socket =
+        if page == 1 do
+          socket
+          |> stream(:opinion_cards, [], reset: true)
+          |> assign(:page, 1)
+          |> assign(:cards_by_id, %{})
+          |> assign(:votes, %{})
+          |> assign(:opinions, %{})
+        else
+          socket
+        end
+
+      assign(socket, :has_more_statements, false)
+    else
+      # Extract statement IDs for loading current user's data
+      statement_ids = cards |> Enum.map(& &1.statement.id) |> Enum.uniq()
+
+      votes_by_answer_opts =
+        case feed_order do
+          :quote_date -> [order_by: :quote_date]
+          :added -> [order_by: :recency]
+          _ -> [order_by: :quote_date]
+        end
+
+      votes_by_answer =
+        StatementQueries.get_top_votes_by_answer_for_statements(
+          statement_ids,
+          votes_by_answer_opts
+        )
+
+      opinion_counts =
+        Votes.count_by_response_map_for_statements(statement_ids, has_opinion_id: true)
+
+      cards =
+        Enum.map(cards, fn card ->
+          card
+          |> Map.put(:votes_by_answer, Map.get(votes_by_answer, card.statement.id, %{}))
+          |> Map.put(:opinion_counts, Map.get(opinion_counts, card.statement.id, %{}))
+        end)
+
+      new_liked_opinion_ids = Likes.get_liked_opinion_ids(current_user)
+      new_votes = load_votes(statement_ids, current_user)
+      new_opinions = load_opinions(statement_ids, current_user)
+
+      # Build cards_by_id for edit functionality
+      new_cards_by_id = Map.new(cards, fn card -> {card.id, card} end)
+
+      # Merge with existing data when loading additional pages
+      {liked_opinion_ids, votes, opinions, cards_by_id} =
+        if page == 1 do
+          {new_liked_opinion_ids, new_votes, new_opinions, new_cards_by_id}
+        else
+          {
+            Enum.uniq(socket.assigns.liked_opinion_ids ++ new_liked_opinion_ids),
+            Map.merge(socket.assigns.votes, new_votes),
+            Map.merge(socket.assigns.opinions, new_opinions),
+            Map.merge(socket.assigns.cards_by_id, new_cards_by_id)
+          }
+        end
+
+      socket
+      |> stream(:opinion_cards, cards, reset: page == 1)
+      |> assign(:has_more_statements, true)
+      |> assign(:page, page)
+      |> assign(:delegate_ids, load_delegate_ids(current_user))
+      |> assign(:liked_opinion_ids, liked_opinion_ids)
+      |> assign(:votes, votes)
+      |> assign(:opinions, opinions)
+      |> assign(:cards_by_id, cards_by_id)
+    end
+  end
+
+  defp get_current_user_delegation_ids(nil), do: []
+
+  defp get_current_user_delegation_ids(current_user) do
+    Delegations.delegate_ids_by_deleguee_id(current_user.author_id)
+  end
+
+  defp assign_stats(socket, stats) do
+    assign(socket, :hall_stats, stats)
+  end
+
+  defp maybe_assign_feed_scope(socket, params) do
+    hall_name = hall_name_from_params(params)
+    min_opinions = min_opinions_from_params(params, hall_name)
+
+    if socket.assigns.hall_name == hall_name && socket.assigns.min_opinions == min_opinions do
+      socket
+    else
+      socket
+      |> assign(:hall_name, hall_name)
+      |> assign(:min_opinions, min_opinions)
+      |> assign_cards(1)
+    end
+  end
+
+  defp hall_name_from_params(%{"hall" => hall_name})
+       when is_binary(hall_name) and hall_name != "" do
+    hall_name
+  end
+
+  defp hall_name_from_params(_params), do: HallNav.default_hall()
+
+  defp min_opinions_from_params(%{"min_opinions" => value}, hall_name) do
+    parse_min_opinions(to_string(value), default_min_opinions_for(hall_name))
+  end
+
+  defp min_opinions_from_params(_params, hall_name) do
+    default_min_opinions_for(hall_name)
+  end
+
+  defp default_min_opinions_for(hall_name) do
+    Halls.minimum_opinions_for(hall_name, StatementQueries.home_minimum_opinions())
+  end
+
+  defp parse_min_opinions(value, fallback) do
+    case Integer.parse(value) do
+      {min_opinions, ""} when min_opinions >= 0 -> min_opinions
+      _ -> fallback
+    end
+  end
+
+  defp perform_search(socket, search) do
+    Track.event("Search", socket.assigns.current_user)
+
+    {quotes, quotes_has_more} = load_search_results(:quotes, search, @search_page_size)
+    {authors, authors_has_more} = load_search_results(:delegates, search, @search_page_size)
+
+    {statements, statements_has_more} =
+      load_search_results(:statements, search, @search_page_size)
+
+    {halls, halls_has_more} = load_search_results(:halls, search, @search_page_size)
+    search_totals = load_search_totals(search)
+
+    search_tab =
+      cond do
+        Enum.any?(quotes) -> :quotes
+        Enum.any?(authors) -> :delegates
+        Enum.any?(statements) -> :statements
+        Enum.any?(halls) -> :halls
+        true -> :quotes
+      end
+
+    assign(socket,
+      statements: statements,
+      search: search,
+      search_tab: search_tab,
+      authors: authors,
+      halls: halls,
+      quotes: quotes,
+      search_has_more: %{
+        quotes: quotes_has_more,
+        delegates: authors_has_more,
+        statements: statements_has_more,
+        halls: halls_has_more
+      },
+      search_totals: search_totals
+    )
+  end
+
+  defp normalize_search(search) do
+    case String.trim(search) do
+      "" -> nil
+      normalized_search -> normalized_search
+    end
+  end
+
+  defp load_more_search_results(socket) do
+    %{search: search, search_tab: search_tab, search_has_more: search_has_more} = socket.assigns
+
+    if Map.get(search_has_more, search_tab, false) do
+      visible_limit =
+        search_results_for_tab(socket, search_tab) |> length() |> Kernel.+(@search_page_size)
+
+      {results, has_more} = load_search_results(search_tab, search, visible_limit)
+
+      socket
+      |> assign(search_results_key(search_tab), results)
+      |> assign(:search_has_more, Map.put(search_has_more, search_tab, has_more))
+    else
+      socket
+    end
+  end
+
+  defp load_search_results(:quotes, search, visible_limit) do
+    search
+    |> quote_search_opts(visible_limit + 1)
+    |> Opinions.list_opinions()
+    |> take_visible_results(visible_limit)
+  end
+
+  defp load_search_results(:delegates, search, visible_limit) do
+    search
+    |> author_search_opts(visible_limit + 1)
+    |> Authors.list_authors()
+    |> take_visible_results(visible_limit)
+  end
+
+  defp load_search_results(:statements, search, visible_limit) do
+    search
+    |> statement_search_opts(visible_limit + 1)
+    |> Statements.list_statements()
+    |> take_visible_results(visible_limit)
+  end
+
+  defp load_search_results(:halls, search, visible_limit) do
+    search
+    |> hall_search_opts(visible_limit + 1)
+    |> Halls.list_halls()
+    |> take_visible_results(visible_limit)
+  end
+
+  defp quote_search_opts(search, limit) do
+    [search: search, preload: [:author], order_by: [desc: :id], limit: limit]
+  end
+
+  defp author_search_opts(search, limit) do
+    [search: search, order_by: [asc: :name, asc: :id], limit: limit]
+  end
+
+  defp statement_search_opts(search, limit) do
+    [search: search, preload: [:halls], order: :inserted_at_desc, limit: limit]
+  end
+
+  defp hall_search_opts(search, limit) do
+    [search: search, order_by: [asc: :name, asc: :id], limit: limit]
+  end
+
+  defp load_search_totals(search) do
+    %{
+      quotes: Opinions.count(search: search),
+      delegates: Authors.count(search: search),
+      statements: Statements.count(search: search),
+      halls: Halls.count(search: search)
+    }
+  end
+
+  defp take_visible_results(results, visible_limit) do
+    {Enum.take(results, visible_limit), length(results) > visible_limit}
+  end
+
+  defp search_results_for_tab(socket, search_tab) do
+    Map.fetch!(socket.assigns, search_results_key(search_tab))
+  end
+
+  defp search_results_key(:quotes), do: :quotes
+  defp search_results_key(:delegates), do: :authors
+  defp search_results_key(:statements), do: :statements
+  defp search_results_key(:halls), do: :halls
+
+  defp reset_search_results(socket) do
+    assign(socket,
+      search: nil,
+      search_tab: nil,
+      quotes: [],
+      authors: [],
+      statements: [],
+      halls: [],
+      search_has_more: empty_search_has_more(),
+      search_totals: empty_search_totals()
+    )
+  end
+
+  defp empty_search_has_more do
+    Map.new(@search_tabs, &{&1, false})
+  end
+
+  defp empty_search_totals do
+    Map.new(@search_tabs, &{&1, 0})
+  end
+end

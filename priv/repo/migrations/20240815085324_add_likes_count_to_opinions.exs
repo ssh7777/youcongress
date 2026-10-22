@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddLikesCountToOpinions do
+defmodule APX.Repo.Migrations.AddLikesCountToOpinions do
   use Ecto.Migration
 
   def change do

@@ -8,23 +8,26 @@ config :bcrypt_elixir, :log_rounds, 1
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
-config :you_congress, YouCongress.Repo,
+config :apx, APX.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "you_congress_test#{System.get_env("MIX_TEST_PARTITION")}",
+  database: "apx_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 10
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :you_congress, YouCongressWeb.Endpoint,
+config :apx, APXWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "y4ccTkzKw/MFuGN1bTNJiWtId10kouKRTM/B0AQ5uFFcVEaAJmF8WnSUJgMrp7YL",
   server: false
 
-# In test we don't send emails.
-config :you_congress, YouCongress.Mailer, adapter: Swoosh.Adapters.Test
+# In test we don't send emails; use reserved example addresses for mail assertions.
+config :apx, APX.Mailer, adapter: Swoosh.Adapters.Test
+config :apx, :contact_email, "contact@example.test"
+config :apx, :admin_notification_email, "admin@example.test"
+config :apx, :email_from, "noreply@example.test"
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
@@ -35,39 +38,39 @@ config :logger, level: :error
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :you_congress, Oban, testing: :inline
+config :apx, Oban, testing: :inline
 
-config :you_congress, amplitude_api_key: nil
+config :apx, amplitude_api_key: nil
 
-config :you_congress, :hall_classifier, YouCongress.Halls.ClassificationFake
-config :you_congress, :embeddings_implementation, YouCongress.Embeddings.Fake
-config :you_congress, :quotator_implementation, YouCongress.Opinions.Quotes.QuotatorFake
+config :apx, :hall_classifier, APX.Halls.ClassificationFake
+config :apx, :embeddings_implementation, APX.Embeddings.Fake
+config :apx, :quotator_implementation, APX.Opinions.Quotes.QuotatorFake
 
-config :you_congress,
+config :apx,
        :fresh_quote_finder_implementation,
-       YouCongress.Opinions.Quotes.FreshQuoteFinderFake
+       APX.Opinions.Quotes.FreshQuoteFinderFake
 
-config :you_congress, :title_rewording_implementation, YouCongress.Statements.TitleRewordingFake
+config :apx, :title_rewording_implementation, APX.Statements.TitleRewordingFake
 
-config :you_congress,
+config :apx,
        :author_country_inference_implementation,
-       YouCongress.Authors.CountryInferenceFake
+       APX.Authors.CountryInferenceFake
 
-config :you_congress, :quote_verifier_implementation, YouCongress.Verifications.VerifierFake
+config :apx, :quote_verifier_implementation, APX.Verifications.VerifierFake
 
-config :you_congress, :quote_synthesis_implementation, YouCongress.Statements.SynthesisFake
+config :apx, :quote_synthesis_implementation, APX.Statements.SynthesisFake
 
-config :you_congress, :wikidata_implementation, YouCongress.Wikidata.WikidataFake
+config :apx, :wikidata_implementation, APX.Wikidata.WikidataFake
 
-config :you_congress,
+config :apx,
        :quote_statement_matcher_implementation,
-       YouCongress.Verifications.QuoteStatementMatcherFake
+       APX.Verifications.QuoteStatementMatcherFake
 
 # Disable the MCP session store during tests to avoid runtime warnings.
 config :anubis_mcp, :session_store, enabled: false
 
 # Disable Cloudflare Turnstile verification in tests
-config :you_congress, :turnstile_enabled, false
+config :apx, :turnstile_enabled, false
 
 # Keep X login enabled in tests to cover the OAuth code paths
-config :you_congress, :feature_flags, %{log_in_with_x: true}
+config :apx, :feature_flags, %{log_in_with_x: true}

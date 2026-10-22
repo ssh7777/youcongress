@@ -1,0 +1,705 @@
+defmodule APXWeb.MCPServer.OpinionsToolsTest do
+  use APX.DataCase, async: false
+  use Oban.Testing, repo: APX.Repo
+
+  import Mock
+  import APX.AccountsFixtures
+  import APX.DelegationsFixtures
+  import APX.OpinionsFixtures
+  import APX.StatementsFixtures
+  import APX.VotesFixtures
+  import APX.StatementsFixtures
+  import APX.VotesFixtures
+
+  alias APX.Accounts
+  alias APX.Opinions
+  alias APX.Opinions.Opinion
+  alias APX.OpinionsStatements
+  alias APX.Verifications
+  alias APX.Votes
+  alias APX.Workers.VerificationWorker
+  alias APXWeb.MCPServer.OpinionsCreate
+  alias APXWeb.MCPServer.OpinionsDelete
+  alias APXWeb.MCPServer.OpinionsEdit
+  alias APXWeb.MCPServer.OpinionsShow
+  alias APXWeb.MCPServer.OpinionsStatementsAdd
+  alias APXWeb.MCPServer.OpinionsStatementsRemove
+
+  @missing_key_message "API key is required. Pass ?key=YOUR_KEY in the MCP request URL."
+  @invalid_key_message "The provided API key is invalid. Create a new key in Settings > API."
+  @not_found_message "Opinion not found."
+  @invalid_vote_answer_message "Answer must be one of: For, Abstain, Against."
+
+  describe "OpinionsShow.execute/2" do
+    test "returns a serialized opinion payload" do
+      opinion = opinion_fixture(%{content: "Universal healthcare is essential."})
+      statement = statement_fixture(%{title: "Universal healthcare should be a right."})
+      {:ok, _} = Opinions.add_opinion_to_statement(opinion, statement.id)
+
+      vote =
+        vote_fixture(%{
+          author_id: opinion.author_id,
+          statement_id: statement.id,
+          answer: :against
+        })
+
+      with_mocked_response(fn ->
+        assert {:reply, {:json, %{opinion: payload}}, :frame} =
+                 OpinionsShow.execute(%{opinion_id: opinion.id}, :frame)
+
+        assert payload.opinion_id == opinion.id
+        assert payload.content == "Universal healthcare is essential."
+        assert payload.author_id == opinion.author_id
+
+        assert [statement_payload] = payload.statements
+        assert statement_payload.statement_id == statement.id
+        assert statement_payload.statement_title == "Universal healthcare should be a right."
+        assert statement_payload.vote_id == vote.id
+        assert statement_payload.vote_answer == :against
+      end)
+    end
+
+    test "returns a deterministic not-found error" do
+      with_mocked_response(fn ->
+        assert {:reply, {:error, @not_found_message}, :frame} =
+                 OpinionsShow.execute(%{opinion_id: -1}, :frame)
+      end)
+    end
+  end
+
+  describe "OpinionsCreate.execute/2" do
+    test "creates an opinion when authenticated and authorized" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+
+      opinion_id =
+        with_mocked_response_and_key(api_key.token, fn frame ->
+          assert {:reply, {:json, %{opinion: payload}}, ^frame} =
+                   OpinionsCreate.execute(
+                     %{
+                       content: "We should invest more in quantum research.",
+                       author_id: owner.author_id,
+                       source_url: "https://example.com",
+                       date: "2026-04-13",
+                       date_precision: "day"
+                     },
+                     frame
+                   )
+
+          assert payload.content == "We should invest more in quantum research."
+          assert payload.author_id == owner.author_id
+          assert payload.source_url == "https://example.com"
+          assert payload.date == "2026-04-13"
+          assert payload.date_precision == "day"
+
+          opinion = Opinions.get_opinion!(payload.opinion_id)
+          assert opinion.user_id == owner.id
+          assert opinion.date == ~D[2026-04-13]
+          assert opinion.date_precision == :day
+
+          payload.opinion_id
+        end)
+
+      opinion = Opinions.get_opinion!(opinion_id)
+      assert opinion.content == "We should invest more in quantum research."
+      assert opinion.author_id == owner.author_id
+      assert opinion.user_id == owner.id
+    end
+
+    test "returns missing-key error when no API key is provided" do
+      owner = user_fixture()
+
+      with_mocked_response_and_key(nil, fn frame ->
+        assert {:reply, {:error, @missing_key_message}, ^frame} =
+                 OpinionsCreate.execute(
+                   %{content: "Education is vital.", author_id: owner.author_id},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns invalid-key error when API key token is unknown" do
+      owner = user_fixture()
+
+      with_mocked_response_and_key("invalid-token", fn frame ->
+        assert {:reply, {:error, @invalid_key_message}, ^frame} =
+                 OpinionsCreate.execute(
+                   %{content: "Democracy must be protected.", author_id: owner.author_id},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns forbidden when caller cannot create for the author" do
+      owner = user_fixture()
+      other_user = user_fixture()
+      api_key = api_key_fixture(other_user)
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, "Your account is not allowed to create this opinion."}, ^frame} =
+                 OpinionsCreate.execute(
+                   %{content: "Universal childcare now.", author_id: owner.author_id},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns validation errors when creation fails" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, "Could not create opinion: source_url is not a valid URL"},
+                ^frame} =
+                 OpinionsCreate.execute(
+                   %{
+                     content: "Healthcare should be universal.",
+                     author_id: owner.author_id,
+                     source_url: "ftp://example.com"
+                   },
+                   frame
+                 )
+      end)
+    end
+
+    test "normalizes blank source_text without creating a quote" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+
+      Oban.Testing.with_testing_mode(:manual, fn ->
+        opinion_id =
+          with_mocked_response_and_key(api_key.token, fn frame ->
+            assert {:reply, {:json, %{opinion: payload}}, ^frame} =
+                     OpinionsCreate.execute(
+                       %{
+                         content: "This remains an ordinary opinion.",
+                         author_id: owner.author_id,
+                         source_text: " \n\t "
+                       },
+                       frame
+                     )
+
+            assert payload.source_text == nil
+            payload.opinion_id
+          end)
+
+        opinion = Opinions.get_opinion!(opinion_id)
+
+        assert opinion.source_text == nil
+        refute Opinion.quote?(opinion)
+
+        refute_enqueued(
+          worker: VerificationWorker,
+          args: %{"subject" => "quote", "id" => opinion.id}
+        )
+      end)
+    end
+  end
+
+  describe "OpinionsEdit.execute/2" do
+    test "updates an opinion when authenticated and authorized" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+
+      opinion =
+        opinion_fixture(%{user_id: owner.id, author_id: owner.author_id, content: "Before"})
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:json, %{opinion: payload}}, ^frame} =
+                 OpinionsEdit.execute(%{opinion_id: opinion.id, content: "After"}, frame)
+
+        assert payload.content == "After"
+      end)
+
+      assert Opinions.get_opinion!(opinion.id).content == "After"
+    end
+
+    test "returns an error when no updatable fields are provided" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+      opinion = opinion_fixture(%{user_id: owner.id, author_id: owner.author_id})
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply,
+                {:error,
+                 "Provide at least one field to update: content, source_url, source_text, date, date_precision, author_id."},
+                ^frame} =
+                 OpinionsEdit.execute(%{opinion_id: opinion.id}, frame)
+      end)
+    end
+
+    test "returns missing-key error when no API key is provided" do
+      opinion = opinion_fixture()
+
+      with_mocked_response_and_key(nil, fn frame ->
+        assert {:reply, {:error, @missing_key_message}, ^frame} =
+                 OpinionsEdit.execute(%{opinion_id: opinion.id, content: "After"}, frame)
+      end)
+    end
+
+    test "returns invalid-key error when API key token is unknown" do
+      opinion = opinion_fixture()
+
+      with_mocked_response_and_key("invalid-token", fn frame ->
+        assert {:reply, {:error, @invalid_key_message}, ^frame} =
+                 OpinionsEdit.execute(%{opinion_id: opinion.id, content: "After"}, frame)
+      end)
+    end
+
+    test "returns forbidden when caller cannot edit target opinion" do
+      owner = user_fixture()
+      other_user = user_fixture()
+      api_key = api_key_fixture(other_user)
+
+      opinion =
+        opinion_fixture(%{user_id: owner.id, author_id: owner.author_id, content: "Before"})
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, "Your account is not allowed to edit this opinion."}, ^frame} =
+                 OpinionsEdit.execute(%{opinion_id: opinion.id, content: "After"}, frame)
+      end)
+
+      assert Opinions.get_opinion!(opinion.id).content == "Before"
+    end
+
+    test "returns deterministic not-found error for missing opinion" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, @not_found_message}, ^frame} =
+                 OpinionsEdit.execute(%{opinion_id: -1, content: "After"}, frame)
+      end)
+    end
+  end
+
+  describe "OpinionsDelete.execute/2" do
+    test "deletes an opinion when authenticated and authorized" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+      opinion = opinion_fixture(%{user_id: owner.id, author_id: owner.author_id})
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:json, %{deleted: true, deleted_opinion_id: deleted_id}}, ^frame} =
+                 OpinionsDelete.execute(%{opinion_id: opinion.id}, frame)
+
+        assert deleted_id == opinion.id
+      end)
+
+      assert Opinions.get_opinion(opinion.id) == nil
+    end
+
+    test "returns missing-key error when no API key is provided" do
+      opinion = opinion_fixture()
+
+      with_mocked_response_and_key(nil, fn frame ->
+        assert {:reply, {:error, @missing_key_message}, ^frame} =
+                 OpinionsDelete.execute(%{opinion_id: opinion.id}, frame)
+      end)
+    end
+
+    test "returns forbidden when caller cannot delete target opinion" do
+      owner = user_fixture()
+      other_user = user_fixture()
+      api_key = api_key_fixture(other_user)
+      opinion = opinion_fixture(%{user_id: owner.id, author_id: owner.author_id})
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, "Your account is not allowed to delete this opinion."}, ^frame} =
+                 OpinionsDelete.execute(%{opinion_id: opinion.id}, frame)
+      end)
+
+      assert Opinions.get_opinion(opinion.id)
+    end
+
+    test "returns deterministic not-found error for missing opinion" do
+      owner = user_fixture()
+      api_key = api_key_fixture(owner)
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, @not_found_message}, ^frame} =
+                 OpinionsDelete.execute(%{opinion_id: -1}, frame)
+      end)
+    end
+  end
+
+  describe "OpinionsStatementsAdd.execute/2" do
+    test "attaches an opinion to a statement when authenticated and authorized" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:json, payload}, ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "For"},
+                   frame
+                 )
+
+        assert payload.attached
+        assert payload.opinion_id == opinion.id
+        assert payload.statement_id == statement.id
+        assert payload.statement_title == statement.title
+        assert payload.vote.answer == "for"
+        assert payload.vote.author_id == opinion.author_id
+      end)
+
+      opinion = Opinions.get_opinion!(opinion.id, preload: [:statements])
+      assert Enum.any?(opinion.statements, &(&1.id == statement.id))
+
+      vote = Votes.get_by(%{statement_id: statement.id, author_id: opinion.author_id})
+      assert vote
+      assert vote.answer == :for
+      assert vote.opinion_id == opinion.id
+    end
+
+    test "triggers relevance verification by default for verified quotes" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      {:ok, _} =
+        Verifications.create_verification(admin, %{
+          opinion_id: opinion.id,
+          user_id: admin.id,
+          status: :verified,
+          comment: "Authentic"
+        })
+
+      Oban.Testing.with_testing_mode(:manual, fn ->
+        with_mocked_response_and_key(api_key.token, fn frame ->
+          assert {:reply, {:json, payload}, ^frame} =
+                   OpinionsStatementsAdd.execute(
+                     %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "For"},
+                     frame
+                   )
+
+          assert payload.attached
+        end)
+
+        opinion_statement = OpinionsStatements.get_opinion_statement(opinion.id, statement.id)
+
+        assert_enqueued(
+          worker: VerificationWorker,
+          args: %{"subject" => "relevance", "id" => opinion_statement.id}
+        )
+      end)
+    end
+
+    test "skips relevance verification when trigger_relevance_verification is false" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      {:ok, _} =
+        Verifications.create_verification(admin, %{
+          opinion_id: opinion.id,
+          user_id: admin.id,
+          status: :verified,
+          comment: "Authentic"
+        })
+
+      Oban.Testing.with_testing_mode(:manual, fn ->
+        with_mocked_response_and_key(api_key.token, fn frame ->
+          assert {:reply, {:json, payload}, ^frame} =
+                   OpinionsStatementsAdd.execute(
+                     %{
+                       opinion_id: opinion.id,
+                       statement_id: statement.id,
+                       vote_answer: "For",
+                       trigger_relevance_verification: false
+                     },
+                     frame
+                   )
+
+          assert payload.attached
+        end)
+
+        opinion_statement = OpinionsStatements.get_opinion_statement(opinion.id, statement.id)
+
+        refute_enqueued(
+          worker: VerificationWorker,
+          args: %{"subject" => "relevance", "id" => opinion_statement.id}
+        )
+      end)
+    end
+
+    test "recalculates delegated votes for authors delegating to the opinion author" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+      deleguee = user_fixture()
+
+      delegation_fixture(%{deleguee_id: deleguee.author_id, delegate_id: opinion.author_id})
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:json, payload}, ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "For"},
+                   frame
+                 )
+
+        assert payload.attached
+      end)
+
+      delegated_vote = Votes.get_by(%{statement_id: statement.id, author_id: deleguee.author_id})
+      assert delegated_vote
+      assert delegated_vote.answer == :for
+      assert delegated_vote.direct == false
+      assert delegated_vote.opinion_id == nil
+    end
+
+    test "returns missing-key error when no API key is provided" do
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      with_mocked_response_and_key(nil, fn frame ->
+        assert {:reply, {:error, @missing_key_message}, ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "For"},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns forbidden when caller lacks permission" do
+      user = user_fixture()
+      api_key = api_key_fixture(user)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, "Your account is not allowed to attach opinions to statements."},
+                ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "Against"},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns an error when the opinion is already attached" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      {:ok, _} = Opinions.add_opinion_to_statement(opinion, statement.id)
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, "Opinion is already associated with this statement."}, ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "Abstain"},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns an error when answer is outside the allowed values" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, @invalid_vote_answer_message}, ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "maybe"},
+                   frame
+                 )
+      end)
+
+      refute Votes.get_by(%{statement_id: statement.id, author_id: opinion.author_id})
+    end
+
+    test "updates an existing vote when the author already voted for the statement" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      statement = statement_fixture()
+      existing_vote = vote_fixture(%{statement_id: statement.id, answer: :against})
+      opinion = opinion_fixture(%{author_id: existing_vote.author_id})
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:json, payload}, ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id, vote_answer: "For"},
+                   frame
+                 )
+
+        assert payload.vote.vote_id == existing_vote.id
+        assert payload.vote.answer == "for"
+      end)
+
+      vote = Votes.get_by(%{statement_id: statement.id, author_id: opinion.author_id})
+      assert vote.id == existing_vote.id
+      assert vote.answer == :for
+      assert vote.opinion_id == opinion.id
+    end
+
+    test "keeps existing linked opinions when attaching another quote by the same author" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      statement = statement_fixture()
+
+      existing_opinion =
+        opinion_fixture(%{
+          content: "Existing quote",
+          source_url: "https://example.com/existing",
+          twin: false
+        })
+
+      {:ok, _} = Opinions.add_opinion_to_statement(existing_opinion, statement.id)
+
+      existing_vote =
+        vote_fixture(%{
+          statement_id: statement.id,
+          author_id: existing_opinion.author_id,
+          opinion_id: existing_opinion.id,
+          answer: :against
+        })
+
+      new_opinion =
+        opinion_fixture(%{
+          author_id: existing_opinion.author_id,
+          content: "New quote",
+          source_url: "https://example.com/new",
+          twin: false
+        })
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:json, payload}, ^frame} =
+                 OpinionsStatementsAdd.execute(
+                   %{opinion_id: new_opinion.id, statement_id: statement.id, vote_answer: "For"},
+                   frame
+                 )
+
+        assert payload.vote.vote_id == existing_vote.id
+        assert payload.vote.answer == "for"
+      end)
+
+      vote = Votes.get_by(%{statement_id: statement.id, author_id: existing_opinion.author_id})
+      assert vote.id == existing_vote.id
+      assert vote.answer == :for
+      assert vote.opinion_id == new_opinion.id
+
+      linked_opinions =
+        Opinions.list_opinions(
+          author_ids: [existing_opinion.author_id],
+          statement_ids: [statement.id],
+          order_by: [asc: :id]
+        )
+
+      assert Enum.map(linked_opinions, & &1.id) == [existing_opinion.id, new_opinion.id]
+      assert Enum.map(linked_opinions, & &1.content) == ["Existing quote", "New quote"]
+    end
+  end
+
+  describe "OpinionsStatementsRemove.execute/2" do
+    test "removes an opinion from a statement when authenticated and authorized" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+      {:ok, _} = Opinions.add_opinion_to_statement(opinion, statement.id)
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:json, payload}, ^frame} =
+                 OpinionsStatementsRemove.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id},
+                   frame
+                 )
+
+        assert payload.removed
+        assert payload.opinion_id == opinion.id
+        assert payload.statement_id == statement.id
+      end)
+
+      opinion = Opinions.get_opinion!(opinion.id, preload: [:statements])
+      refute Enum.any?(opinion.statements, &(&1.id == statement.id))
+    end
+
+    test "returns missing-key error when no API key is provided" do
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      with_mocked_response_and_key(nil, fn frame ->
+        assert {:reply, {:error, @missing_key_message}, ^frame} =
+                 OpinionsStatementsRemove.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns forbidden when caller lacks permission" do
+      user = user_fixture()
+      api_key = api_key_fixture(user)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply,
+                {:error, "Your account is not allowed to remove opinions from statements."},
+                ^frame} =
+                 OpinionsStatementsRemove.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id},
+                   frame
+                 )
+      end)
+    end
+
+    test "returns an error when the opinion is not attached" do
+      admin = admin_fixture()
+      api_key = api_key_fixture(admin)
+      opinion = opinion_fixture()
+      statement = statement_fixture()
+
+      with_mocked_response_and_key(api_key.token, fn frame ->
+        assert {:reply, {:error, "Opinion is not associated with this statement."}, ^frame} =
+                 OpinionsStatementsRemove.execute(
+                   %{opinion_id: opinion.id, statement_id: statement.id},
+                   frame
+                 )
+      end)
+    end
+  end
+
+  defp api_key_fixture(user) do
+    {:ok, api_key} = Accounts.create_api_key_for_user(user, %{"name" => "CLI", "scope" => :write})
+    api_key
+  end
+
+  defp with_mocked_response(fun) do
+    with_mocks([
+      {Anubis.Server.Response, [],
+       [
+         tool: fn -> :tool end,
+         json: fn :tool, data -> {:json, data} end,
+         error: fn :tool, message -> {:error, message} end
+       ]}
+    ]) do
+      fun.()
+    end
+  end
+
+  defp with_mocked_response_and_key(key, fun) do
+    with_mocks([
+      {Anubis.Server.Response, [],
+       [
+         tool: fn -> :tool end,
+         json: fn :tool, data -> {:json, data} end,
+         error: fn :tool, message -> {:error, message} end
+       ]}
+    ]) do
+      frame = %Anubis.Server.Frame{
+        context: %Anubis.Server.Context{headers: %{"authorization" => "Bearer #{key}"}}
+      }
+
+      fun.(frame)
+    end
+  end
+end

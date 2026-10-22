@@ -1,0 +1,115 @@
+<article class="mx-auto max-w-5xl py-10 sm:py-14">
+  <header class="rounded-3xl border border-apx-line bg-apx-surface p-6 sm:p-10">
+    <p class="apx-mono-label">About APX</p>
+    <h1 class="mt-4 max-w-4xl text-4xl font-bold tracking-tight text-apx-text sm:text-5xl">
+      Sovereign Policy Analytics &amp; Expert Consensus Engine
+    </h1>
+    <p class="mt-6 max-w-3xl text-xl leading-8 text-apx-muted">
+      APX organizes source-linked claims, policy proposals, attributed positions, voting signals,
+      and intelligence briefs so people can inspect the evidence and the limits of each conclusion.
+    </p>
+    <div class="mt-7 flex flex-wrap gap-3">
+      <.link
+        href={~p"/explore"}
+        class="rounded-lg bg-apx-blue px-5 py-3 font-semibold text-white hover:brightness-110"
+      >Explore proposals</.link>
+      <.link
+        href={~p"/intelligence"}
+        class="rounded-lg border border-apx-cyan px-5 py-3 font-semibold text-apx-cyan hover:bg-apx-cyan/10"
+      >Open intelligence</.link>
+    </div>
+  </header>
+
+  <section aria-labelledby="about-method" class="py-12">
+    <h2 id="about-method" class="text-2xl font-bold text-apx-text">A source-first method</h2>
+    <div class="mt-6 grid gap-4 md:grid-cols-2">
+      <div class="apx-panel p-6">
+        <p class="apx-mono-label">Evidence layer</p>
+        <h3 class="mt-2 text-xl font-semibold text-apx-text">Traceable public positions</h3>
+        <p class="mt-3 text-sm leading-6 text-apx-muted">
+          Quotes and claims can be linked to authors, dates, original sources, and the policy
+          proposals they bear on. Verification states describe individual checks; they do not
+          guarantee truth or eliminate context disputes.
+        </p>
+      </div>
+      <div class="apx-panel p-6">
+        <p class="apx-mono-label">Participation layer</p>
+        <h3 class="mt-2 text-xl font-semibold text-apx-text">Direct voting and optional delegation</h3>
+        <p class="mt-3 text-sm leading-6 text-apx-muted">
+          Participants may vote directly or delegate to people they trust. Direct votes take
+          precedence; delegated results are derived from the selected delegates' recorded votes.
+          Participation is not automatically representative of the public or of technical experts.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="about-language" class="border-t border-apx-line py-12">
+    <h2 id="about-language" class="text-2xl font-bold text-apx-text">How to read APX signals</h2>
+    <div class="mt-6 space-y-4">
+      <div class="apx-panel p-6">
+        <h3 class="font-semibold text-apx-text">Empirical Consensus Metrics</h3>
+        <p class="mt-2 text-sm leading-6 text-apx-muted">
+          APX surfaces recorded positions and disagreement. It does not invent a consensus
+          percentage or claim that a self-selected group represents all experts.
+        </p>
+      </div>
+      <div class="apx-panel p-6">
+        <h3 class="font-semibold text-apx-text">Non-Deterministic System Verification</h3>
+        <p class="mt-2 text-sm leading-6 text-apx-muted">
+          Automated and human review can disagree. A status indicates what a particular check found,
+          with source links available for readers to reassess the item.
+        </p>
+      </div>
+      <div class="apx-panel p-6">
+        <h3 class="font-semibold text-apx-text">Sovereign Telemetry</h3>
+        <p class="mt-2 text-sm leading-6 text-apx-muted">
+          The <.link href={~p"/intelligence"} class="text-apx-cyan underline">intelligence hub</.link>
+          monitors high-authority public feeds. Its impact labels are rule-based triage of headlines
+          and RSS excerpts—not official threat assessments or full-article analysis.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="about-audience" class="border-t border-apx-line py-12">
+    <h2 id="about-audience" class="text-2xl font-bold text-apx-text">Designed for public scrutiny</h2>
+    <p class="mt-4 max-w-3xl leading-7 text-apx-muted">
+      APX is intended to support researchers, parliamentarians, committee clerks, journalists, and
+      sovereign security leads who need to examine policy arguments and their sources. This describes
+      the intended audience, not an endorsement or current adoption claim.
+    </p>
+    <p class="mt-4 max-w-3xl leading-7 text-apx-muted">
+      APX is a policy analytics project. It is not currently a registered non-profit institute,
+      government service, official technical standard, or certification authority. No claim is made
+      that its current participants amount to a fixed share of independent auditors or policy
+      fellows.
+    </p>
+  </section>
+
+  <section aria-labelledby="about-boundaries" class="rounded-2xl border border-apx-line bg-[#0D1421] p-6 sm:p-8">
+    <h2 id="about-boundaries" class="text-xl font-bold text-apx-text">What APX does not decide</h2>
+    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-apx-muted">
+      <li>It does not determine whether a claim is true solely from a vote or popularity measure.</li>
+      <li>It does not bind governments, companies, or the people whose views are recorded.</li>
+      <li>It does not infer that a quoted public figure has personally cast a vote on APX.</li>
+      <li>Its AI-assisted checks and RSS triage can be incomplete or wrong; primary sources remain essential.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="about-participate" class="border-t border-apx-line pt-10">
+    <h2 id="about-participate" class="text-2xl font-bold text-apx-text">Help improve the record</h2>
+    <p class="mt-4 leading-7 text-apx-muted">
+      Bring a missing source, a well-supported objection, or a question that deserves closer
+      examination. Review the
+      <.link href={~p"/dataset"} class="font-semibold text-apx-cyan underline">public dataset</.link>
+      or contact the project through the contact form.
+    </p>
+    <div class="mt-6 flex flex-wrap gap-5 font-semibold text-apx-cyan">
+      <.link href={~p"/explore"} class="underline underline-offset-4">Explore proposals</.link>
+      <.link :if={!@current_user} href={~p"/sign_up"} class="underline underline-offset-4">Join APX</.link>
+      <.link href={~p"/contact"} class="underline underline-offset-4">Contact</.link>
+      <.link href={~p"/faq"} class="underline underline-offset-4">Frequently asked questions</.link>
+    </div>
+  </section>
+</article>

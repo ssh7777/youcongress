@@ -1,0 +1,82 @@
+<section class="mx-auto max-w-6xl py-10 sm:py-14">
+  <header class="rounded-3xl border border-apx-line bg-apx-surface p-6 sm:p-10">
+    <p class="apx-mono-label">APX / Sovereign telemetry</p>
+    <h1 class="mt-4 text-4xl font-bold tracking-tight text-apx-text sm:text-5xl">
+      Policy &amp; Cyber Intelligence
+    </h1>
+    <p class="mt-5 max-w-3xl text-lg leading-8 text-apx-muted">
+      A source-first watch on AI governance, sovereign technology, cyber conflict and
+      information operations. Each brief keeps the publisher's canonical link beside a
+      clearly labeled, rule-based APX triage.
+    </p>
+    <div class="mt-6 flex flex-wrap gap-2" aria-label="Filter intelligence by subject">
+      <.link
+        href={~p"/intelligence"}
+        class={category_filter_class(@category == nil)}
+      >
+        All signals
+      </.link>
+      <.link
+        :for={category <- @categories}
+        href={~p"/intelligence?#{%{category: category}}"}
+        class={category_filter_class(@category == category)}
+      >
+        {APX.Intelligence.PolicyLinker.category_label(category)}
+      </.link>
+    </div>
+  </header>
+
+  <div class="mt-8 flex items-end justify-between gap-4">
+    <div>
+      <p class="apx-mono-label">Curated feed</p>
+      <h2 class="mt-2 text-2xl font-semibold text-apx-text">
+        {if @category_label, do: @category_label, else: "Latest source-linked signals"}
+      </h2>
+    </div>
+    <span class="hidden rounded-full border border-apx-line px-3 py-1 font-mono text-xs text-apx-muted sm:inline-flex">
+      RSS / ATOM · DAILY INGEST
+    </span>
+  </div>
+
+  <div :if={@articles == []} class="apx-panel mt-6 p-6 sm:p-8">
+    <h3 class="text-lg font-semibold text-apx-text">No intelligence briefs have been ingested yet.</h3>
+    <p class="mt-2 max-w-2xl text-sm leading-6 text-apx-muted">
+      In production, Oban checks the configured public feeds daily. Operators can also run
+      <code class="rounded bg-black/30 px-1.5 py-0.5 text-apx-cyan">mix intelligence.ingest</code>
+      after applying database migrations.
+    </p>
+  </div>
+
+  <div :if={@articles != []} class="mt-6 grid gap-4 lg:grid-cols-2">
+    <article :for={article <- @articles} class="apx-panel flex flex-col p-5 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <span class="apx-mono-label">{APX.Intelligence.PolicyLinker.category_label(article.category)}</span>
+        <span class={impact_badge_class(article.impact_rating)}>
+          {String.capitalize(article.impact_rating)} impact
+        </span>
+      </div>
+      <h3 class="mt-4 text-xl font-semibold leading-7 text-apx-text">
+        <.link href={~p"/intelligence/#{article.slug}"} class="hover:text-apx-cyan">
+          {article.title}
+        </.link>
+      </h3>
+      <p :if={article.summary} class="mt-3 line-clamp-4 text-sm leading-6 text-apx-muted">
+        {article.summary}
+      </p>
+      <div class="mt-auto flex flex-wrap items-center justify-between gap-3 pt-5 text-xs text-apx-muted">
+        <span>{article.source_name}</span>
+        <time :if={article.published_at} datetime={DateTime.to_iso8601(article.published_at)}>
+          {Date.to_string(DateTime.to_date(article.published_at))}
+        </time>
+      </div>
+    </article>
+  </div>
+
+  <p class="mt-8 border-t border-apx-line pt-5 text-xs leading-5 text-apx-muted">
+    APX briefs are automated relevance triage based on publisher feed metadata. Ratings are not
+    official threat assessments; verify facts, context and updates with the linked publisher.
+    APX does not claim a fixed expert-consensus percentage or government endorsement.
+  </p>
+</section>
+
+<%# Keep category styling semantic and reusable in the component helper below. %>

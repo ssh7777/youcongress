@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddSynthesisToStatements do
+defmodule APX.Repo.Migrations.AddSynthesisToStatements do
   use Ecto.Migration
 
   def change do

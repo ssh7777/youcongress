@@ -1,0 +1,270 @@
+defmodule APX.Votes.VoteFrequencies do
+  @moduledoc """
+  Module to calculate vote frequencies
+  """
+
+  alias APX.Countries
+  alias APX.Votes
+
+  @responses [:for, :abstain, :against]
+  @unknown_country "Unknown country"
+  @eu_country_id :eu
+  @eu_country_name "European Union"
+  @country_filter_keys [:direct, :delegated, :quotes, :email_verified, :phone_verified]
+  @default_country_filters Map.new(@country_filter_keys, &{&1, true})
+
+  @spec get(number) :: %{atom => {non_neg_integer(), non_neg_integer()}}
+  def get(statement_id) do
+    statement_id
+    |> Votes.count_by_response()
+    |> Enum.into(%{})
+    |> frequencies()
+  end
+
+  @spec get_by_country(number) :: [
+          %{
+            country_id: integer() | nil,
+            country_name: String.t(),
+            total_votes: non_neg_integer(),
+            vote_frequencies: %{atom => {non_neg_integer(), non_neg_integer()}}
+          }
+        ]
+  def get_by_country(statement_id) do
+    statement_id
+    |> Votes.count_by_country_and_response()
+    |> Enum.group_by(fn {country_id, country_name, _answer, _count} ->
+      {country_id, country_name || @unknown_country}
+    end)
+    |> Enum.map(fn {{country_id, country_name}, rows} ->
+      counts =
+        Map.new(rows, fn {_country_id, _country_name, answer, count} ->
+          {answer, count}
+        end)
+
+      %{
+        country_id: country_id,
+        country_name: country_name,
+        total_votes: Enum.sum(Map.values(counts)),
+        vote_frequencies: frequencies(counts)
+      }
+    end)
+    |> Enum.sort_by(fn %{country_id: country_id, country_name: country_name, total_votes: total} ->
+      {is_nil(country_id), -total, country_name}
+    end)
+  end
+
+  def get_by_country(statement_id, filters) do
+    filters = normalize_country_filters(filters)
+    countries = Countries.list_countries()
+    eu_country_ids = MapSet.new(Countries.eu_member_ids())
+
+    keyed_rows =
+      statement_id
+      |> Votes.country_result_vote_rows()
+      |> Enum.filter(&include_vote?(&1, filters))
+      |> Enum.map(fn row -> {country_key(row, filters, countries), row} end)
+
+    country_results =
+      keyed_rows
+      |> Enum.group_by(fn {key, _row} -> key end, fn {_key, row} -> row end)
+      |> Enum.map(fn {{country_id, country_name}, rows} ->
+        country_result(country_id, country_name, rows)
+      end)
+
+    country_results
+    |> add_eu_result(keyed_rows, eu_country_ids)
+    |> sort_country_results()
+  end
+
+  defp country_result(country_id, country_name, rows) do
+    counts = Enum.frequencies_by(rows, & &1.answer)
+
+    %{
+      country_id: country_id,
+      country_name: country_name,
+      total_votes: Enum.sum(Map.values(counts)),
+      vote_frequencies: frequencies(counts)
+    }
+  end
+
+  # Adds an aggregated "European Union" row combining every vote whose resolved
+  # country is an EU member. Flagged with `aggregate: true` so callers can keep
+  # it out of cross-country totals. It is sorted among the countries by vote
+  # count like any other row. Omitted when no EU votes exist.
+  defp add_eu_result(country_results, keyed_rows, eu_country_ids) do
+    eu_rows =
+      for {{country_id, _name}, row} <- keyed_rows,
+          MapSet.member?(eu_country_ids, country_id),
+          do: row
+
+    case eu_rows do
+      [] ->
+        country_results
+
+      rows ->
+        eu_result =
+          Map.put(country_result(@eu_country_id, @eu_country_name, rows), :aggregate, true)
+
+        [eu_result | country_results]
+    end
+  end
+
+  @spec get_by_year(number, map) :: [
+          %{
+            year: integer(),
+            total_votes: non_neg_integer(),
+            vote_frequencies: %{atom => {non_neg_integer(), non_neg_integer()}}
+          }
+        ]
+  def get_by_year(statement_id, filters) do
+    filters = normalize_country_filters(filters)
+
+    statement_id
+    |> Votes.country_result_vote_rows()
+    |> Enum.filter(&(include_vote?(&1, filters) and dated?(&1)))
+    |> Enum.group_by(&year_key/1)
+    |> Enum.map(fn {year, rows} ->
+      counts = Enum.frequencies_by(rows, & &1.answer)
+
+      %{
+        year: year,
+        total_votes: Enum.sum(Map.values(counts)),
+        vote_frequencies: frequencies(counts)
+      }
+    end)
+    |> Enum.sort_by(& &1.year, :desc)
+  end
+
+  def default_country_filters, do: @default_country_filters
+
+  def default_year_filters, do: @default_country_filters
+
+  def normalize_year_filters(filters), do: normalize_country_filters(filters)
+
+  def toggle_year_filter(filters, filter), do: toggle_country_filter(filters, filter)
+
+  def normalize_country_filters(filters) when is_map(filters) do
+    Map.new(@country_filter_keys, fn key ->
+      {key, truthy?(Map.get(filters, key) || Map.get(filters, to_string(key)))}
+    end)
+  end
+
+  def normalize_country_filters(_), do: @default_country_filters
+
+  def toggle_country_filter(filters, filter) do
+    filters = normalize_country_filters(filters)
+
+    filter
+    |> normalize_filter_key()
+    |> case do
+      nil -> filters
+      key -> Map.update!(filters, key, &(!&1))
+    end
+  end
+
+  defp frequencies(counts) do
+    total = Enum.sum(Map.values(counts))
+
+    Map.new(@responses, fn response ->
+      count = Map.get(counts, response, 0)
+      {response, {count, percentage(count, total)}}
+    end)
+  end
+
+  defp percentage(_count, 0), do: 0
+  defp percentage(count, total), do: round(count * 100 / total)
+
+  defp include_vote?(row, filters) do
+    include_vote_kind?(row, filters) && include_source?(row, filters)
+  end
+
+  defp include_vote_kind?(%{direct: true}, %{direct: include_direct}), do: include_direct
+
+  defp include_vote_kind?(%{direct: false}, %{delegated: include_delegated}),
+    do: include_delegated
+
+  defp include_source?(row, filters) do
+    cond do
+      quote_sourced?(row) ->
+        filters.quotes
+
+      filters.phone_verified && phone_verified?(row) ->
+        true
+
+      filters.email_verified && email_verified?(row) ->
+        true
+
+      # Legacy accounts could vote before email verification was required
+      filters.email_verified && !phone_verified?(row) ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  # A vote is quote-sourced when its author has no user account (public figures)
+  # or when it comes from an opinion that is not a user comment.
+  defp quote_sourced?(%{has_user: false}), do: true
+  defp quote_sourced?(%{source_url: source_url}) when is_binary(source_url), do: true
+  defp quote_sourced?(%{source_text: source_text}) when is_binary(source_text), do: true
+
+  defp quote_sourced?(%{opinion_id: opinion_id, opinion_user_id: nil})
+       when not is_nil(opinion_id),
+       do: true
+
+  defp quote_sourced?(_), do: false
+
+  defp dated?(%{opinion_date: %Date{}}), do: true
+  defp dated?(_), do: false
+
+  defp year_key(%{opinion_date: %Date{year: year}}), do: year
+
+  defp country_key(row, %{phone_verified: true}, countries) do
+    if phone_verified?(row) do
+      case Countries.get_country_by_phone_number(row.user_phone_number, countries) do
+        nil -> author_country_key(row)
+        country -> {country.id, country.name}
+      end
+    else
+      author_country_key(row)
+    end
+  end
+
+  defp country_key(row, _filters, _countries), do: author_country_key(row)
+
+  defp author_country_key(%{author_country_id: country_id, author_country_name: country_name}) do
+    {country_id, country_name || @unknown_country}
+  end
+
+  defp email_verified?(%{user_email_confirmed: user_email_confirmed}), do: user_email_confirmed
+
+  defp phone_verified?(%{
+         user_phone_confirmed: user_phone_confirmed,
+         user_phone_number: user_phone_number
+       }) do
+    user_phone_confirmed && is_binary(user_phone_number)
+  end
+
+  defp sort_country_results(results) do
+    Enum.sort_by(results, fn %{
+                               country_id: country_id,
+                               country_name: country_name,
+                               total_votes: total
+                             } ->
+      {is_nil(country_id), -total, country_name}
+    end)
+  end
+
+  defp truthy?(value) when value in [true, "true", "on", "1", 1], do: true
+  defp truthy?(_), do: false
+
+  defp normalize_filter_key(filter) when is_atom(filter) and filter in @country_filter_keys,
+    do: filter
+
+  defp normalize_filter_key(filter) when is_binary(filter) do
+    Enum.find(@country_filter_keys, &(to_string(&1) == filter))
+  end
+
+  defp normalize_filter_key(_), do: nil
+end

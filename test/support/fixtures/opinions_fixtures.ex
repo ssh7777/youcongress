@@ -1,10 +1,10 @@
-defmodule YouCongress.OpinionsFixtures do
+defmodule APX.OpinionsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `YouCongress.Opinions` context.
+  entities via the `APX.Opinions` context.
   """
 
-  alias YouCongress.{AccountsFixtures, AuthorsFixtures}
+  alias APX.{AccountsFixtures, AuthorsFixtures}
 
   @doc """
   Generate an opinion.
@@ -22,9 +22,9 @@ defmodule YouCongress.OpinionsFixtures do
         user_id: user_id,
         author_id: author_id
       })
-      |> YouCongress.Opinions.create_opinion()
+      |> APX.Opinions.create_opinion()
 
     # Reload from database to match what list_opinions() returns (no preloaded associations)
-    YouCongress.Opinions.get_opinion!(opinion.id)
+    APX.Opinions.get_opinion!(opinion.id)
   end
 end

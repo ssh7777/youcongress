@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddFriendsCountToAuthors do
+defmodule APX.Repo.Migrations.AddFriendsCountToAuthors do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddGoogleIdToAuthors do
+defmodule APX.Repo.Migrations.AddGoogleIdToAuthors do
   use Ecto.Migration
 
   def change do

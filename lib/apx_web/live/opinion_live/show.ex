@@ -1,0 +1,930 @@
+defmodule APXWeb.OpinionLive.Show do
+  use APXWeb, :live_view
+
+  require Logger
+
+  alias APX.Likes
+  alias APX.OpinionStatementVerifications
+  alias APX.Opinions
+  alias APX.Opinions.Opinion
+  alias APX.OpinionsStatements.OpinionStatement
+  alias APX.Repo
+  alias APX.Verifications
+  alias APX.VerificationStatus
+  alias APX.Track
+  alias APX.Delegations
+  alias APX.Halls
+  alias APXWeb.OpinionLive.OpinionComponent
+  alias APXWeb.StatementLive.VoteComponent
+  alias APXWeb.Components.VerificationAggregate
+  alias APX.Statements
+  alias APX.OpinionsStatements
+  alias APX.Votes
+  alias APX.VoteVerifications
+  alias APX.Accounts.Permissions
+  alias APX.Workers.VerificationWorker
+  alias APXWeb.SEO
+
+  @impl true
+  def mount(_params, session, socket) do
+    socket = assign_current_user(socket, session["user_token"])
+
+    %{assigns: %{current_user: current_user}} = socket
+
+    socket = assign(socket, :liked_opinion_ids, Likes.get_liked_opinion_ids(current_user))
+
+    if connected?(socket) do
+      Track.event("View Opinion", current_user)
+    end
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_params(%{"id" => opinion_id}, _, socket) do
+    socket = load_opinion!(socket, opinion_id)
+    %{assigns: %{opinion: opinion}} = socket
+    parent_opinion = Opinion.parent(opinion)
+    changeset = Opinions.change_opinion(%Opinions.Opinion{})
+
+    socket = load_delegations(socket)
+
+    {:noreply,
+     socket
+     |> assign_page_meta(opinion)
+     |> assign(
+       opinion: opinion,
+       parent_opinion: parent_opinion,
+       changeset: changeset,
+       search_query: "",
+       search_results: [],
+       show_search: false,
+       show_vote_modal: false,
+       selected_statement_id: nil,
+       selected_statement_title: nil,
+       editing_opinion_id: nil
+     )}
+  end
+
+  @impl true
+  def handle_event("validate", %{"opinion" => opinion_params}, socket) do
+    changeset =
+      %Opinions.Opinion{}
+      |> Opinions.change_opinion(opinion_params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :changeset, changeset)}
+  end
+
+  @impl true
+  def handle_event("save", %{"opinion" => %{"content" => content}}, socket) do
+    %{assigns: %{opinion: opinion, current_user: current_user}} = socket
+
+    ancestry =
+      if opinion.ancestry, do: "#{opinion.ancestry}/#{opinion.id}", else: "#{opinion.id}"
+
+    opinion_params = %{
+      "content" => content,
+      "author_id" => current_user.author_id,
+      "user_id" => current_user.id,
+      "verification_status" => :endorsed,
+      "ancestry" => ancestry
+    }
+
+    case Opinions.create_opinion(opinion_params) do
+      {:ok, %{opinion: opinion}} ->
+        Track.event("New Opinion", current_user)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Opinion created successfully.")
+         |> redirect(to: "/c/#{opinion.id}")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, changeset: changeset)}
+
+      {:error, :rate_limited} ->
+        {:noreply,
+         put_flash(socket, :error, "Too many submissions. Please wait before trying again.")}
+    end
+  end
+
+  def handle_event("remove-delegation", %{"author_id" => author_id}, socket) do
+    %{assigns: %{current_user: current_user, opinion: opinion}} = socket
+
+    case Delegations.delete_delegation(current_user, author_id) do
+      {:ok, _} ->
+        socket =
+          socket
+          |> load_opinion!(opinion.id)
+          |> load_delegations()
+          |> put_flash(:info, "Delegation removed successfully.")
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, socket |> put_flash(:error, "Failed to remove delegation.")}
+    end
+  end
+
+  def handle_event("add-delegation", %{"author_id" => author_id}, socket) do
+    %{assigns: %{current_user: current_user, opinion: opinion}} = socket
+
+    case Delegations.create_delegation(current_user, author_id) do
+      {:ok, _} ->
+        socket =
+          socket
+          |> load_opinion!(opinion.id)
+          |> load_delegations()
+          |> put_flash(:info, "Delegated successfully.")
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, socket |> put_flash(:error, "Failed to delegate.")}
+    end
+  end
+
+  def handle_event("edit", %{"opinion_id" => opinion_id}, socket) do
+    %{assigns: %{current_user: current_user}} = socket
+    opinion_id = String.to_integer(opinion_id)
+    opinion = Opinions.get_opinion!(opinion_id, preload: [:statements])
+
+    if Permissions.can_edit_opinion?(opinion, current_user) do
+      {:noreply, assign(socket, :editing_opinion_id, opinion_id)}
+    else
+      {:noreply, put_flash(socket, :error, "You are not allowed to edit this opinion.")}
+    end
+  end
+
+  def handle_event("delete-comment", %{"opinion_id" => opinion_id}, socket) do
+    %{assigns: %{current_user: current_user}} = socket
+    opinion = Opinions.get_opinion!(opinion_id, preload: [:statements])
+
+    if Permissions.can_edit_opinion?(opinion, current_user) do
+      {_count, nil} = Opinions.delete_opinion_and_descendants(opinion)
+
+      Track.event("Delete Opinion", current_user)
+
+      parent_opinion_id = Opinion.parent_id(opinion)
+      url = if parent_opinion_id, do: "/c/#{parent_opinion_id}", else: "/"
+
+      {:noreply,
+       socket
+       |> redirect(to: url)
+       |> put_flash(:info, "Opinion deleted successfully.")}
+    else
+      {:noreply, put_flash(socket, :error, "You are not allowed to delete this opinion.")}
+    end
+  end
+
+  def handle_event("toggle-search", _params, socket) do
+    {:noreply, assign(socket, :show_search, !socket.assigns.show_search)}
+  end
+
+  def handle_event("search-statements", %{"value" => query}, socket) do
+    %{assigns: %{opinion: opinion}} = socket
+
+    search_results =
+      if String.length(query) >= 2 do
+        existing_statement_ids = Enum.map(opinion.statements, & &1.id)
+
+        Statements.list_statements(title_contains: query, limit: 10)
+        |> Enum.reject(fn statement -> statement.id in existing_statement_ids end)
+      else
+        []
+      end
+
+    {:noreply,
+     socket
+     |> assign(:search_query, query)
+     |> assign(:search_results, search_results)}
+  end
+
+  def handle_event("show-vote-options", %{"statement_id" => statement_id}, socket) do
+    %{assigns: %{current_user: current_user, search_results: search_results}} = socket
+
+    if Permissions.can_add_opinion_to_statement?(current_user) do
+      statement_id_int = String.to_integer(statement_id)
+      statement = Enum.find(search_results, fn s -> s.id == statement_id_int end)
+
+      if statement do
+        socket =
+          socket
+          |> assign(:show_search, false)
+          |> assign(:show_vote_modal, true)
+          |> assign(:selected_statement_id, statement_id_int)
+          |> assign(:selected_statement_title, statement.title)
+
+        {:noreply, socket}
+      else
+        {:noreply, put_flash(socket, :error, "Statement not found in search results.")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to do this.")}
+    end
+  end
+
+  def handle_event("cancel-vote-modal", _params, socket) do
+    socket =
+      socket
+      |> assign(:show_vote_modal, false)
+      |> assign(:selected_statement_id, nil)
+      |> assign(:selected_statement_title, nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "add-to-statement-with-vote",
+        %{"statement_id" => statement_id, "answer" => answer},
+        socket
+      ) do
+    %{assigns: %{opinion: opinion, current_user: current_user}} = socket
+
+    if Permissions.can_add_opinion_to_statement?(current_user) do
+      opinion = Map.put(opinion, :user_id, current_user.id)
+
+      with {:ok, _updated_opinion} <-
+             Opinions.add_opinion_to_statement(opinion, String.to_integer(statement_id)),
+           {:ok, _vote} <-
+             create_or_update_vote(current_user, opinion, String.to_integer(statement_id), answer) do
+        Track.event("Add Opinion to Statement with Vote", current_user)
+
+        socket =
+          socket
+          |> load_opinion!(opinion.id)
+          |> assign(:show_search, false)
+          |> assign(:search_query, "")
+          |> assign(:search_results, [])
+          |> assign(:show_vote_modal, false)
+          |> assign(:selected_statement_id, nil)
+          |> assign(:selected_statement_title, nil)
+          |> put_flash(
+            :info,
+            "Opinion added to statement with your vote (#{answer}) successfully."
+          )
+
+        {:noreply, socket}
+      else
+        {:error, :already_associated} ->
+          {:noreply,
+           socket |> put_flash(:error, "Opinion is already associated with this statement.")}
+
+        {:error, error} ->
+          Logger.error("Error adding opinion to statement: #{inspect(error)}")
+          {:noreply, socket |> put_flash(:error, "Failed to add opinion to statement.")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to do this.")}
+    end
+  end
+
+  def handle_event("remove-from-statement", %{"statement_id" => statement_id}, socket) do
+    %{assigns: %{opinion: opinion, current_user: current_user}} = socket
+
+    if Permissions.can_add_opinion_to_statement?(current_user) do
+      case Opinions.remove_opinion_from_statement(opinion, String.to_integer(statement_id)) do
+        {:ok, _} ->
+          Track.event("Remove Opinion from Statement", current_user)
+
+          socket =
+            socket
+            |> load_opinion!(opinion.id)
+            |> put_flash(:info, "Opinion removed from poll successfully.")
+
+          {:noreply, socket}
+
+        {:error, :not_associated} ->
+          {:noreply,
+           socket |> put_flash(:error, "Opinion is not associated with this statement.")}
+
+        {:error, error} ->
+          Logger.error("Error removing opinion from statement: #{inspect(error)}")
+          {:noreply, socket |> put_flash(:error, "Failed to remove opinion from statement.")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to do this.")}
+    end
+  end
+
+  def handle_event("add-to-statement", %{"statement_id" => statement_id}, socket) do
+    %{assigns: %{opinion: opinion, current_user: current_user}} = socket
+
+    if Permissions.can_add_opinion_to_statement?(current_user) do
+      opinion = Map.put(opinion, :user_id, current_user.id)
+
+      case Opinions.add_opinion_to_statement(opinion, String.to_integer(statement_id)) do
+        {:ok, _updated_opinion} ->
+          Track.event("Add Opinion to Statement", current_user)
+
+          socket =
+            socket
+            |> load_opinion!(opinion.id)
+            |> assign(:show_search, false)
+            |> assign(:search_query, "")
+            |> assign(:search_results, [])
+            |> put_flash(:info, "Opinion added to statement successfully.")
+
+          {:noreply, socket}
+
+        {:error, :already_associated} ->
+          {:noreply,
+           socket |> put_flash(:error, "Opinion is already associated with this statement.")}
+
+        {:error, error} ->
+          Logger.error("Error adding opinion to statement: #{inspect(error)}")
+          {:noreply, socket |> put_flash(:error, "Failed to add opinion to statement.")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to do this.")}
+    end
+  end
+
+  def handle_event("enqueue-ai-verification", %{"subject" => subject, "id" => id}, socket) do
+    %{assigns: %{current_user: current_user, opinion: opinion}} = socket
+
+    if Permissions.can_verify_opinion?(current_user) do
+      with {:ok, id} <- parse_id(id),
+           true <- verification_target_on_page?(subject, id, opinion),
+           :ok <- verification_enqueue_prerequisites(subject, id),
+           {:ok, _job} <- enqueue_verification(subject, id) do
+        {:noreply, put_flash(socket, :info, "#{verification_subject_label(subject)} queued.")}
+      else
+        {:error, :quote_not_verified} ->
+          {:noreply, put_flash(socket, :error, "Verify the quote before its relevance or vote.")}
+
+        {:error, :relevance_not_verified} ->
+          {:noreply, put_flash(socket, :error, "Verify the relevance before the vote.")}
+
+        false ->
+          {:noreply, put_flash(socket, :error, "Cannot queue verification for that item.")}
+
+        :error ->
+          {:noreply, put_flash(socket, :error, "Cannot queue verification for that item.")}
+
+        {:error, reason} ->
+          Logger.error("Error queueing AI verification: #{inspect(reason)}")
+          {:noreply, put_flash(socket, :error, "Failed to queue verification.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do this.")}
+    end
+  end
+
+  @impl true
+  def handle_info({:opinion_updated, updated_opinion}, socket) do
+    socket =
+      socket
+      |> load_opinion!(updated_opinion.id)
+      |> load_delegations()
+      |> assign(:editing_opinion_id, nil)
+      |> put_flash(:info, "Opinion updated successfully")
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:opinion_update_error, _changeset}, socket) do
+    {:noreply, put_flash(socket, :error, "Failed to update opinion")}
+  end
+
+  def handle_info({:opinion_update_forbidden, _opinion_id}, socket) do
+    {:noreply, put_flash(socket, :error, "You are not allowed to edit this opinion.")}
+  end
+
+  def handle_info(:opinion_edit_cancelled, socket) do
+    {:noreply, assign(socket, :editing_opinion_id, nil)}
+  end
+
+  def handle_info({:verification_saved, _subject_type, _id}, socket) do
+    {:noreply, load_opinion!(socket, socket.assigns.opinion.id)}
+  end
+
+  defp create_or_update_vote(current_user, opinion, statement_id, answer) do
+    alias APX.Votes
+
+    answer_atom = String.downcase(answer) |> String.to_existing_atom()
+
+    vote_params = %{
+      author_id: opinion.author_id,
+      statement_id: statement_id,
+      answer: answer_atom,
+      opinion_id: opinion.id,
+      user_id: current_user.id,
+      direct: true,
+      twin: false
+    }
+
+    Votes.create_or_update(vote_params)
+  end
+
+  defp load_opinion!(socket, opinion_id) do
+    opinion = Opinions.get_opinion!(opinion_id, preload: [:author, statements: [:halls]])
+
+    opinion_with_votes =
+      opinion
+      |> load_author_votes_for_opinion()
+      |> load_statement_verification_histories()
+
+    verifications =
+      Verifications.list_verifications(
+        opinion_id: opinion_id,
+        order_by: [desc: :updated_at],
+        preload: [user: [:author]]
+      )
+
+    assign(socket,
+      opinion: opinion_with_votes,
+      verifications: verifications,
+      other_opinion_votes: other_opinion_votes(opinion_with_votes),
+      other_authors: other_authors(opinion_with_votes)
+    )
+  end
+
+  defp other_opinion_votes(%{author_id: author_id, id: opinion_id})
+       when is_integer(author_id) do
+    load_other_opinion_votes(author_id, opinion_id, nil, [], MapSet.new())
+  end
+
+  defp other_opinion_votes(_opinion), do: []
+
+  defp load_other_opinion_votes(_author_id, _opinion_id, _cursor, cards, _used_statement_ids)
+       when length(cards) >= 3,
+       do: Enum.reverse(cards)
+
+  defp load_other_opinion_votes(author_id, opinion_id, cursor, cards, used_statement_ids) do
+    opts = [
+      author_ids: [author_id],
+      exclude_ids: [opinion_id],
+      only_quotes: true,
+      twin: false,
+      has_statements: true,
+      order_by: [desc_nulls_last: :date, desc: :id],
+      preload: [:statements],
+      limit: 50
+    ]
+
+    opts = if cursor, do: Keyword.put(opts, :quote_date_cursor, cursor), else: opts
+    opinions = Opinions.list_opinions(opts)
+
+    statement_ids =
+      opinions
+      |> Enum.flat_map(& &1.statements)
+      |> Enum.map(& &1.id)
+      |> Enum.uniq()
+
+    votes_by_statement_id =
+      Votes.list_votes(
+        author_ids: [author_id],
+        statement_ids: statement_ids,
+        twin: false,
+        preload: [:statement]
+      )
+      |> Map.new(&{&1.statement_id, &1})
+
+    {cards, used_statement_ids} =
+      Enum.reduce(opinions, {cards, used_statement_ids}, fn
+        _opinion, {cards, used_statement_ids} when length(cards) >= 3 ->
+          {cards, used_statement_ids}
+
+        opinion, {cards, used_statement_ids} = acc ->
+          statement =
+            opinion.statements
+            |> Enum.sort_by(& &1.id)
+            |> Enum.find(fn statement ->
+              Map.has_key?(votes_by_statement_id, statement.id) and
+                not MapSet.member?(used_statement_ids, statement.id)
+            end)
+
+          if statement do
+            vote =
+              votes_by_statement_id
+              |> Map.fetch!(statement.id)
+              |> Map.put(:opinion, opinion)
+              |> Map.put(:statement, statement)
+
+            {[vote | cards], MapSet.put(used_statement_ids, statement.id)}
+          else
+            acc
+          end
+      end)
+
+    case List.last(opinions) do
+      nil ->
+        Enum.reverse(cards)
+
+      _last_opinion when length(cards) >= 3 ->
+        Enum.reverse(cards)
+
+      _last_opinion when length(opinions) < 50 ->
+        Enum.reverse(cards)
+
+      last_opinion ->
+        cursor = {:desc, last_opinion.date, last_opinion.id}
+
+        load_other_opinion_votes(
+          author_id,
+          opinion_id,
+          cursor,
+          cards,
+          used_statement_ids
+        )
+    end
+  end
+
+  defp other_authors(%{author_id: author_id, statements: statements})
+       when is_integer(author_id) and is_list(statements) do
+    hall_names =
+      statements
+      |> Enum.flat_map(& &1.halls)
+      |> Enum.map(& &1.name)
+
+    Halls.list_top_authors_for_halls(hall_names,
+      exclude_author_ids: [author_id],
+      limit: 9
+    )
+  end
+
+  defp other_authors(_opinion), do: []
+
+  defp load_statement_verification_histories(%{statements: statements} = opinion)
+       when is_list(statements) and statements != [] do
+    relation_verifications_by_id = relation_verifications_by_id(statements)
+    vote_verifications_by_id = vote_verifications_by_id(statements, opinion.id)
+
+    statements =
+      Enum.map(statements, fn statement ->
+        opinion_statement = Map.get(statement, :opinion_statement)
+
+        author_vote =
+          statement
+          |> Map.get(:author_vote)
+          |> vote_with_quote_status(opinion.id)
+
+        opinion_statement_id = opinion_statement && opinion_statement.id
+        vote_id = author_vote && author_vote.id
+
+        statement
+        |> Map.put(
+          :relation_verifications,
+          Map.get(relation_verifications_by_id, opinion_statement_id, [])
+        )
+        |> Map.put(:author_vote, author_vote)
+        |> Map.put(:vote_verifications, Map.get(vote_verifications_by_id, vote_id, []))
+      end)
+
+    Map.put(opinion, :statements, statements)
+  end
+
+  defp load_statement_verification_histories(opinion), do: opinion
+
+  defp relation_verifications_by_id(statements) do
+    opinion_statement_ids =
+      statements
+      |> Enum.map(fn statement ->
+        opinion_statement = Map.get(statement, :opinion_statement)
+        opinion_statement && opinion_statement.id
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    if opinion_statement_ids == [] do
+      %{}
+    else
+      OpinionStatementVerifications.list_verifications(
+        opinion_statement_id: opinion_statement_ids,
+        order_by: [desc: :updated_at],
+        preload: [user: [:author]]
+      )
+      |> Enum.group_by(& &1.opinion_statement_id)
+    end
+  end
+
+  defp vote_verifications_by_id(statements, opinion_id) do
+    vote_ids =
+      statements
+      |> Enum.map(&Map.get(&1, :author_vote))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(& &1.id)
+
+    if vote_ids == [] do
+      %{}
+    else
+      VoteVerifications.list_verifications(
+        vote_id: vote_ids,
+        opinion_id: opinion_id,
+        order_by: [desc: :updated_at],
+        preload: [user: [:author]]
+      )
+      |> Enum.group_by(& &1.vote_id)
+    end
+  end
+
+  defp vote_with_quote_status(nil, _opinion_id), do: nil
+
+  defp vote_with_quote_status(vote, opinion_id) do
+    %{vote | verification_status: VoteVerifications.status_for_vote_opinion(vote.id, opinion_id)}
+  end
+
+  defp load_author_votes_for_opinion(opinion) do
+    if opinion.author && opinion.statements && opinion.statements != [] do
+      statement_ids = Enum.map(opinion.statements, & &1.id)
+
+      votes =
+        APX.Votes.list_votes(
+          author_ids: [opinion.author.id],
+          statement_ids: statement_ids,
+          preload: []
+        )
+
+      votes_by_statement = Map.new(votes, fn vote -> {vote.statement_id, vote} end)
+
+      opinion_statements_by_statement =
+        OpinionsStatements.get_opinion_statements_by_statement_ids(opinion.id, statement_ids)
+
+      statements_with_votes =
+        Enum.map(opinion.statements, fn statement ->
+          statement
+          |> Map.put(:author_vote, Map.get(votes_by_statement, statement.id))
+          |> Map.put(
+            :opinion_statement,
+            Map.get(opinion_statements_by_statement, statement.id)
+          )
+        end)
+
+      Map.put(opinion, :statements, statements_with_votes)
+    else
+      opinion
+    end
+  end
+
+  defp load_delegations(socket) do
+    %{assigns: %{current_user: current_user, opinion: opinion}} = socket
+
+    child_opinions =
+      Opinions.list_opinions(
+        ancestry: Opinion.path_str(opinion),
+        preload: [:author],
+        order_by: [desc: :id]
+      )
+
+    delegating = get_delegating(current_user, opinion.author_id)
+    delegate_ids = get_delegate_ids(current_user)
+
+    child_opinions_delegations =
+      child_opinions
+      |> Enum.map(& &1.author_id)
+      |> Enum.uniq()
+      |> Enum.into(%{}, fn author_id ->
+        {author_id, author_id in delegate_ids}
+      end)
+
+    assign(socket,
+      delegating: delegating,
+      child_opinions_delegations: child_opinions_delegations,
+      child_opinions: child_opinions
+    )
+  end
+
+  defp get_delegating(nil, _), do: false
+
+  defp get_delegating(%{author_id: current_user_author_id}, opinion_author_id) do
+    Delegations.delegating?(current_user_author_id, opinion_author_id)
+  end
+
+  defp get_delegate_ids(nil), do: []
+
+  defp get_delegate_ids(%{author_id: author_id}) do
+    Delegations.list_delegation_ids(deleguee_id: author_id)
+  end
+
+  defp quote?(%Opinion{} = opinion) do
+    Opinion.quote?(opinion) && !opinion.twin && is_nil(opinion.ancestry)
+  end
+
+  defp quote?(_), do: false
+
+  defp parse_id(id) when is_integer(id), do: {:ok, id}
+
+  defp parse_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {id, ""} -> {:ok, id}
+      _ -> :error
+    end
+  end
+
+  defp parse_id(_), do: :error
+
+  defp verification_target_on_page?("quote", id, opinion), do: quote?(opinion) && opinion.id == id
+
+  defp verification_target_on_page?("relevance", id, opinion) do
+    opinion.statements
+    |> Enum.any?(fn statement ->
+      case Map.get(statement, :opinion_statement) do
+        %{id: ^id} -> true
+        _ -> false
+      end
+    end)
+  end
+
+  defp verification_target_on_page?("vote", id, opinion) do
+    opinion.statements
+    |> Enum.any?(fn statement ->
+      case Map.get(statement, :author_vote) do
+        %{id: ^id} -> true
+        _ -> false
+      end
+    end)
+  end
+
+  defp verification_target_on_page?(_subject, _id, _opinion), do: false
+
+  defp verification_enqueue_prerequisites("quote", _id), do: :ok
+
+  defp verification_enqueue_prerequisites("relevance", opinion_statement_id) do
+    opinion_statement = opinion_statement_from_id(opinion_statement_id)
+
+    if VerificationStatus.positive?(
+         opinion_statement && opinion_statement.opinion.verification_status
+       ) do
+      :ok
+    else
+      {:error, :quote_not_verified}
+    end
+  end
+
+  defp verification_enqueue_prerequisites("vote", vote_id) do
+    case Votes.get_vote(vote_id) do
+      nil ->
+        :error
+
+      %{opinion_id: nil} ->
+        :ok
+
+      vote ->
+        vote = Repo.preload(vote, :opinion)
+
+        opinion_statement =
+          OpinionsStatements.get_opinion_statement(vote.opinion_id, vote.statement_id)
+
+        cond do
+          not VerificationStatus.positive?(vote.opinion && vote.opinion.verification_status) ->
+            {:error, :quote_not_verified}
+
+          not VerificationStatus.positive?(
+            opinion_statement && opinion_statement.verification_status
+          ) ->
+            {:error, :relevance_not_verified}
+
+          true ->
+            :ok
+        end
+    end
+  end
+
+  defp verification_enqueue_prerequisites(_subject, _id), do: :error
+
+  defp opinion_statement_from_id(opinion_statement_id) do
+    case Repo.get(OpinionStatement, opinion_statement_id) do
+      nil -> nil
+      opinion_statement -> Repo.preload(opinion_statement, :opinion)
+    end
+  end
+
+  defp enqueue_verification(subject, id) when subject in ~w(quote relevance vote) do
+    %{"subject" => subject, "id" => id}
+    |> VerificationWorker.new()
+    |> Oban.insert()
+  end
+
+  defp enqueue_verification(_subject, _id), do: :error
+
+  defp verification_subject_label("quote"), do: "Quote authenticity verification"
+  defp verification_subject_label("relevance"), do: "Statement relation verification"
+  defp verification_subject_label("vote"), do: "Vote inference verification"
+
+  attr :subject, :string, required: true
+  attr :id, :integer, required: true
+  attr :label, :string, required: true
+  attr :testid, :string, required: true
+
+  defp verification_enqueue_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="enqueue-ai-verification"
+      phx-value-subject={@subject}
+      phx-value-id={@id}
+      class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-white hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      title={@label}
+      aria-label={@label}
+      data-testid={@testid}
+    >
+      <.icon name="hero-sparkles" class="h-3 w-3" />
+    </button>
+    """
+  end
+
+  attr :opinion_id, :integer, required: true
+  attr :subject, :string, required: true
+  attr :statement_title, :string, default: nil
+  attr :testid, :string, required: true
+
+  defp verification_report_link(assigns) do
+    href =
+      verification_report_path(
+        assigns.opinion_id,
+        assigns.subject,
+        assigns.statement_title
+      )
+
+    assigns = assign(assigns, :href, href)
+
+    ~H"""
+    <.link
+      href={@href}
+      class="text-xs font-normal text-gray-600 underline hover:text-indigo-600"
+      data-testid={@testid}
+    >
+      Report this
+    </.link>
+    """
+  end
+
+  defp verification_report_path(opinion_id, subject, statement_title) do
+    label = verification_subject_label(subject)
+
+    statement_context =
+      if statement_title do
+        "\nStatement: #{statement_title}"
+      else
+        ""
+      end
+
+    body =
+      "I would like to report an issue with the #{String.downcase(label)} history.#{statement_context}\nOpinion: #{url(~p"/c/#{opinion_id}")}\n\nDetails:\n"
+
+    ~p"/contact?#{%{body: body}}"
+  end
+
+  # Verified quotes get a search-friendly title; plain comments and
+  # replies are thin pages and get noindex.
+  defp assign_page_meta(socket, opinion) do
+    socket = assign(socket, :canonical_url, url(~p"/c/#{opinion.id}"))
+
+    if quote?(opinion) do
+      is_part_of =
+        case opinion.statements do
+          [statement | _] -> url(~p"/p/#{statement.slug}")
+          _ -> nil
+        end
+
+      socket
+      |> assign(:page_title, SEO.opinion_title(opinion))
+      |> assign(:skip_page_suffix, true)
+      |> assign(:page_description, SEO.opinion_description(opinion))
+      |> assign(:og_type, "article")
+      |> assign(:quote_json_ld, SEO.quotation(opinion, root: true, is_part_of: is_part_of))
+    else
+      socket
+      |> assign(:page_title, "Opinion")
+      |> assign(:noindex, true)
+      |> assign(:quote_json_ld, nil)
+    end
+  end
+
+  defp vote_answer_label(:for), do: "votes For"
+  defp vote_answer_label(:against), do: "votes Against"
+  defp vote_answer_label(:abstain), do: "abstains"
+  defp vote_answer_label(_), do: nil
+
+  defp vote_answer_class(:for), do: "text-green-800 font-semibold"
+  defp vote_answer_class(:against), do: "text-red-800 font-semibold"
+  defp vote_answer_class(:abstain), do: "text-blue-800 font-semibold"
+  defp vote_answer_class(_), do: "text-gray-800 font-semibold"
+
+  defp relation_verification_status(%{opinion_statement: %{verification_status: status}}),
+    do: status
+
+  defp relation_verification_status(_), do: nil
+
+  defp vote_verification_status(%{author_vote: nil}), do: :no_vote
+  defp vote_verification_status(%{author_vote: %{verification_status: status}}), do: status
+  defp vote_verification_status(_), do: nil
+
+  defp verification_status_badge_class(:verified), do: "bg-green-100 text-green-800"
+  defp verification_status_badge_class(:ai_verified), do: "bg-gray-100 text-gray-600"
+  defp verification_status_badge_class(:ai_unverifiable), do: "bg-gray-100 text-gray-600"
+  defp verification_status_badge_class(:endorsed), do: "bg-blue-100 text-blue-800"
+  defp verification_status_badge_class(:disputed), do: "bg-orange-100 text-orange-800"
+  defp verification_status_badge_class(:unverifiable), do: "bg-gray-200 text-gray-600"
+  defp verification_status_badge_class(_), do: "bg-gray-100 text-gray-800"
+
+  defp verification_status_label(:verified), do: "Verified"
+  defp verification_status_label(:ai_verified), do: "AI Verified"
+  defp verification_status_label(:ai_unverifiable), do: "AI Unverifiable"
+  defp verification_status_label(:endorsed), do: "Endorsed"
+  defp verification_status_label(:disputed), do: "Disputed"
+  defp verification_status_label(:unverifiable), do: "Unverifiable"
+  defp verification_status_label(:no_vote), do: "No vote"
+  defp verification_status_label(_), do: "Unverified"
+end

@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for youcongress-production on 2024-03-24T09:52:57+01:00
+# fly.toml app configuration file generated for apx-production on 2024-03-24T09:52:57+01:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'youcongress-production'
+app = 'apx-production'
 primary_region = 'fra'
 kill_signal = 'SIGTERM'
 
@@ -13,7 +13,7 @@ kill_signal = 'SIGTERM'
   release_command = '/app/bin/migrate'
 
 [env]
-  PHX_HOST = 'youcongress.org'
+  PHX_HOST = 'apx-production.fly.dev'
   PHX_SERVER = 'true'
   PORT = '8080'
 

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddGeneratingLeftToVotings do
+defmodule APX.Repo.Migrations.AddGeneratingLeftToVotings do
   use Ecto.Migration
 
   def change do

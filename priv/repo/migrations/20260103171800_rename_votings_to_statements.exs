@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RenameVotingsToStatements do
+defmodule APX.Repo.Migrations.RenameVotingsToStatements do
   use Ecto.Migration
 
   def change do

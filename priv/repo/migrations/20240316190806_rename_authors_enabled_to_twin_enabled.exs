@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RenameAuthorsEnabledToTwinEnabled do
+defmodule APX.Repo.Migrations.RenameAuthorsEnabledToTwinEnabled do
   use Ecto.Migration
 
   def change do

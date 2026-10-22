@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddAncestryToOpinions do
+defmodule APX.Repo.Migrations.AddAncestryToOpinions do
   use Ecto.Migration
 
   def up do

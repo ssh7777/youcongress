@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateNewsletterConsents do
+defmodule APX.Repo.Migrations.CreateNewsletterConsents do
   use Ecto.Migration
 
   def change do

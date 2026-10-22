@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddModelToVerifications do
+defmodule APX.Repo.Migrations.AddModelToVerifications do
   use Ecto.Migration
 
   def change do

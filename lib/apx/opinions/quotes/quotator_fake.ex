@@ -1,0 +1,109 @@
+defmodule APX.Opinions.Quotes.QuotatorFake do
+  @moduledoc """
+  Fake implementation that returns 20 plausible quotes with author metadata.
+  Used when OPENAI_API_KEY is not configured in dev/test.
+  """
+
+  alias APX.Opinions.Quotes.Quotator
+
+  @behaviour Quotator
+
+  @doc """
+  Generate and persist fake quotes for a given question title.
+  Returns `{:ok, :job_started}` to match the real implementation contract.
+  """
+  @impl true
+  @spec find_quotes(
+          integer,
+          binary,
+          list(binary),
+          integer() | nil,
+          integer(),
+          integer(),
+          integer()
+        ) ::
+          {:ok, :job_started}
+  def find_quotes(
+        statement_id,
+        question_title,
+        exclude_author_names,
+        user_id,
+        _max_remaining_llm_calls,
+        _max_remaining_quotes,
+        _total_quotes_added \\ 0
+      ) do
+    quotes =
+      1..Quotator.number_of_quotes()
+      |> Enum.map(fn _ -> build_quote(question_title) end)
+      |> ensure_unique_names(exclude_author_names)
+
+    {:ok, _saved_count} =
+      Quotator.save_quotes_from_job(%{
+        statement_id: statement_id,
+        quotes: quotes,
+        user_id: user_id
+      })
+
+    {:ok, :job_started}
+  end
+
+  @impl true
+  def check_job_status(_job_id), do: {:error, :unsupported}
+
+  defp build_quote(question_title) do
+    name = Faker.Person.name()
+    year = Date.utc_today().year
+
+    %{
+      "quote" =>
+        Faker.Lorem.paragraphs(Enum.random(2..3))
+        |> Enum.join(" ")
+        |> Kernel.<>(" (re: #{question_title})"),
+      "source_url" => Faker.Internet.url(),
+      "date" => to_string(year),
+      "date_precision" => "year",
+      "author" => %{
+        "name" => name,
+        "bio" => Faker.Lorem.words(5) |> Enum.join(" "),
+        # Ensure a valid Wikipedia URL to satisfy Author changeset validations
+        "wikipedia_url" => "https://en.wikipedia.org/wiki/" <> wikipedia_title(name),
+        "twitter_username" => Faker.Internet.user_name()
+      },
+      "agree_rate" => Enum.random(["For", "Against", "Abstain"]),
+      "all_key_ideas_covered" => true,
+      "key_idea_coverage" => [
+        %{"idea" => "complete statement", "evidence" => question_title}
+      ]
+    }
+  end
+
+  defp wikipedia_title(name) when is_binary(name) do
+    name
+    |> String.trim()
+    |> String.replace(" ", "_")
+  end
+
+  defp ensure_unique_names(quotes, excluded) do
+    existing = MapSet.new(excluded)
+
+    {unique_quotes, _names} =
+      Enum.map_reduce(quotes, existing, fn quote, acc ->
+        name = get_in(quote, ["author", "name"]) || ""
+
+        if MapSet.member?(acc, name) do
+          new_name = unique_name(acc)
+          new_quote = put_in(quote, ["author", "name"], new_name)
+          {new_quote, MapSet.put(acc, new_name)}
+        else
+          {quote, MapSet.put(acc, name)}
+        end
+      end)
+
+    unique_quotes
+  end
+
+  defp unique_name(taken) do
+    Stream.repeatedly(fn -> Faker.Person.name() end)
+    |> Enum.find(fn n -> not MapSet.member?(taken, n) end)
+  end
+end

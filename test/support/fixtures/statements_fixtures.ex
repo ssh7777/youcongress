@@ -1,7 +1,7 @@
-defmodule YouCongress.StatementsFixtures do
+defmodule APX.StatementsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `YouCongress.Statements` context.
+  entities via the `APX.Statements` context.
   """
 
   @doc """
@@ -13,7 +13,7 @@ defmodule YouCongress.StatementsFixtures do
       |> Enum.into(%{
         title: Faker.Lorem.sentence()
       })
-      |> YouCongress.Statements.create_statement()
+      |> APX.Statements.create_statement()
 
     statement
   end

@@ -7,20 +7,20 @@
 # General application configuration
 import Config
 
-config :you_congress,
-  ecto_repos: [YouCongress.Repo]
+config :apx,
+  ecto_repos: [APX.Repo]
 
-config :you_congress, YouCongress.Repo, types: YouCongress.PostgrexTypes
+config :apx, APX.Repo, types: APX.PostgrexTypes
 
 # Configures the endpoint
-config :you_congress, YouCongressWeb.Endpoint,
+config :apx, APXWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   url: [host: "localhost"],
   render_errors: [
-    formats: [html: YouCongressWeb.ErrorHTML, json: YouCongressWeb.ErrorJSON],
+    formats: [html: APXWeb.ErrorHTML, json: APXWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: YouCongress.PubSub,
+  pubsub_server: APX.PubSub,
   live_view: [signing_salt: "cWg2+46f"]
 
 # Configures the mailer
@@ -30,7 +30,56 @@ config :you_congress, YouCongressWeb.Endpoint,
 #
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
-config :you_congress, YouCongress.Mailer, adapter: Swoosh.Adapters.Local
+config :apx, APX.Mailer, adapter: Swoosh.Adapters.Local
+
+# Curated, source-first public feeds. Keep articles as metadata and short feed
+# excerpts; the intelligence pages link readers to the publishers' canonical URLs.
+config :apx, :intelligence,
+  ingestion_enabled: true,
+  max_items_per_feed: 25,
+  max_age_days: 120,
+  feeds: [
+    %{
+      name: "CISA Cybersecurity Advisories",
+      url: "https://www.cisa.gov/news-events/cybersecurity-advisories.xml",
+      category: "cyber_warfare"
+    },
+    %{
+      name: "CISA News",
+      url: "https://www.cisa.gov/news-events/news/rss.xml",
+      category: "sovereign_technology"
+    },
+    %{
+      name: "European Commission Digital Strategy",
+      url: "https://digital-strategy.ec.europa.eu/en/news/rss.xml",
+      category: "ai_policy_governance"
+    },
+    %{
+      name: "Lawfare",
+      url: "https://www.lawfaremedia.org/rss.xml",
+      category: "ai_policy_governance"
+    },
+    %{
+      name: "CSIS Analysis",
+      url: "https://www.csis.org/analysis/rss.xml",
+      category: "sovereign_technology"
+    },
+    %{
+      name: "MIT Technology Review",
+      url: "https://www.technologyreview.com/feed/",
+      category: "ai_policy_governance"
+    },
+    %{
+      name: "Defense One",
+      url: "https://www.defenseone.com/rss/all/",
+      category: "cyber_warfare"
+    },
+    %{
+      name: "U.S. Department of Defense",
+      url: "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=10",
+      category: "information_operations"
+    }
+  ]
 
 # Configure esbuild (the version is required)
 config :esbuild,
@@ -74,9 +123,10 @@ oban_plugins =
     [
       {Oban.Plugins.Cron,
        crontab: [
-         # {"0 5,17 * * *", YouCongress.Workers.FreshQuoteDiscoveryWorker},
-         {"17 3 * * *", YouCongress.Workers.RateLimitPrunerWorker},
-         {"27 3 * * *", YouCongress.Workers.PendingRegistrationActionPrunerWorker}
+         # {"0 5,17 * * *", APX.Workers.FreshQuoteDiscoveryWorker},
+         {"15 5 * * *", APX.Workers.IntelligenceIngestionWorker},
+         {"17 3 * * *", APX.Workers.RateLimitPrunerWorker},
+         {"27 3 * * *", APX.Workers.PendingRegistrationActionPrunerWorker}
        ]}
       | oban_plugins
     ]
@@ -84,8 +134,8 @@ oban_plugins =
     oban_plugins
   end
 
-config :you_congress, Oban,
-  repo: YouCongress.Repo,
+config :apx, Oban,
+  repo: APX.Repo,
   plugins: oban_plugins,
   queues: [
     default: 10,
@@ -93,7 +143,8 @@ config :you_congress, Oban,
     amplitude: 5,
     verification: 3,
     verification_polling: 5,
-    wikidata: 3
+    wikidata: 3,
+    intelligence: 2
   ]
 
 # Import environment specific config. This must remain at the bottom

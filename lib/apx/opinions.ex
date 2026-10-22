@@ -1,0 +1,1069 @@
+defmodule APX.Opinions do
+  @moduledoc """
+  The context for sourced quotes and user opinions.
+  """
+
+  import Ecto.Query, warn: false
+  import Pgvector.Ecto.Query, only: [cosine_distance: 2]
+  alias APX.Repo
+
+  alias APX.Embeddings
+  alias APX.Endorsements
+  alias APX.FeatureFlags
+  alias APX.Likes
+  alias APX.Opinions.ContentEmbedding
+  alias APX.Opinions.Opinion
+  alias APX.OpinionsStatements.OpinionStatement
+  alias APX.Votes
+  alias APX.Votes.Vote
+  alias APX.Verifications.QuoteCorrectionLoop
+  alias APX.VerificationStatus
+  alias APX.Workers.UpdateAuthorPublicFigureWorker
+  alias APX.Workers.UpdateOpinionDescendantsCountWorker
+  alias APX.Workers.SyncStatementOpinionsCountWorker
+  alias APX.Workers.VerificationWorker
+
+  @quote_reverification_fields [
+    :content,
+    :source_url,
+    :source_text,
+    :date,
+    :date_precision,
+    :author_id
+  ]
+  @positive_verification_statuses [:endorsed, :verified, :ai_verified]
+
+  @doc """
+  Returns the list of opinions.
+
+  ## Examples
+
+      iex> list_opinions()
+      [%Opinion{}, ...]
+
+  """
+  def list_opinions(opts \\ []) do
+    query = build_query(opts)
+    Repo.all(query)
+  end
+
+  @doc """
+  Gets a single opinion.
+
+  Raises `Ecto.NoResultsError` if the Opinion does not exist.
+
+  ## Examples
+
+      iex> get_opinion!(123)
+      %Opinion{}
+
+      iex> get_opinion!(456)
+      ** (Ecto.NoResultsError)
+
+  """
+  def get_opinion!(id), do: Repo.get!(Opinion, id)
+
+  def get_opinion!(id, preload: tables) do
+    Repo.get!(Opinion, id)
+    |> Repo.preload(tables)
+  end
+
+  @doc """
+  Gets a single opinion.
+
+  Returns `nil` if the Opinion does not exist.
+
+  ## Examples
+
+      iex> get_opinion(123)
+      %Opinion{}
+
+      iex> get_opinion(456)
+      nil
+
+  """
+  def get_opinion(nil), do: nil
+
+  def get_opinion(opts) when is_list(opts),
+    do: opts |> Keyword.put_new(:limit, 1) |> build_query() |> Repo.one()
+
+  def get_opinion(id) when is_integer(id) or is_binary(id), do: Repo.get(Opinion, id)
+
+  def get_opinion(id, preload: tables) do
+    Repo.get(Opinion, id)
+    |> Repo.preload(tables)
+  end
+
+  def get_by(opts) do
+    query = build_query(opts)
+    Repo.one(query)
+  end
+
+  @doc """
+  Returns sourced quotes ordered by content embedding cosine similarity.
+
+  Each returned opinion has its `:similarity` virtual field populated with the
+  cosine similarity (1.0 - cosine distance) to the query text.
+
+  Accepts `:statuses`, a list of `verification_status` values (use `nil` for
+  unverified quotes) to restrict the results to.
+  """
+  def get_by_content_similarity(text, opts \\ [])
+
+  def get_by_content_similarity(text, opts) when is_binary(text) do
+    if String.trim(text) == "" do
+      []
+    else
+      case Embeddings.embed(text) do
+        {:ok, embedding} when is_list(embedding) ->
+          query_embedding = Pgvector.new(embedding)
+
+          from(o in Opinion,
+            where:
+              not (is_nil(o.source_url) and is_nil(o.source_text)) and
+                not is_nil(o.content_embedding),
+            order_by: cosine_distance(o.content_embedding, ^query_embedding),
+            limit: 100,
+            select_merge: %{
+              similarity: 1.0 - cosine_distance(o.content_embedding, ^query_embedding)
+            }
+          )
+          |> filter_by_statuses(opts[:statuses])
+          |> Repo.all()
+
+        _ ->
+          []
+      end
+    end
+  end
+
+  def get_by_content_similarity(_text, _opts), do: []
+
+  @doc """
+  Creates a opinion.
+
+  ## Examples
+
+      iex> create_opinion(%{field: value})
+      {:ok, %Opinion{}}
+
+      iex> create_opinion(%{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def create_opinion(attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Opinion.normalize_attrs()
+
+    user_id = value_from_attrs(attrs, :user_id)
+
+    within_user_budget? =
+      is_nil(user_id) or
+        APX.RateLimiter.allowed?(:opinion_creation, user_id, 60, 60 * 60)
+
+    if within_user_budget? and
+         APX.RateLimiter.allowed?(
+           :opinion_creation_global,
+           :global,
+           50_000,
+           24 * 60 * 60
+         ) do
+      do_create_opinion(attrs, user_id)
+    else
+      {:error, :rate_limited}
+    end
+  end
+
+  defp do_create_opinion(attrs, user_id) do
+    result =
+      case Opinion.changeset(%Opinion{}, attrs) do
+        %{valid?: false} = changeset ->
+          {:error, :opinion, changeset, %{}}
+
+        _valid_changeset ->
+          attrs = ContentEmbedding.put(attrs, %Opinion{})
+
+          Ecto.Multi.new()
+          |> Ecto.Multi.insert(:opinion, Opinion.changeset(%Opinion{}, attrs))
+          |> enqueue_update_ancestor_counts(attrs["ancestry"])
+          |> maybe_enqueue_update_author_public_figure(attrs)
+          |> Repo.transaction()
+          |> maybe_endorse_created_opinion(user_id)
+      end
+
+    maybe_enqueue_quote_verification(result)
+    result
+  end
+
+  # A quote (an opinion with a source_url or source_text) is AI-verified whenever it is
+  # created while automatic verification is enabled.
+  defp maybe_enqueue_quote_verification({:ok, %{opinion: %Opinion{id: id} = opinion}}) do
+    if automatic_verifications_enabled?() && Opinion.quote?(opinion) do
+      enqueue_quote_verification(id)
+    else
+      :ok
+    end
+  end
+
+  defp maybe_enqueue_quote_verification(_), do: :ok
+
+  defp enqueue_quote_verification(opinion_id, opts \\ []) do
+    %{"subject" => "quote", "id" => opinion_id}
+    |> QuoteCorrectionLoop.maybe_put_attempt(opts[:correction_attempts])
+    |> VerificationWorker.new()
+    |> Oban.insert()
+  end
+
+  defp enqueue_update_ancestor_counts(multi, nil), do: multi
+
+  defp enqueue_update_ancestor_counts(multi, ancestry) do
+    ascestor_ids = String.split(ancestry, "/")
+
+    Enum.reduce(ascestor_ids, multi, fn ascestor_id, multi ->
+      Ecto.Multi.insert(
+        multi,
+        "update_ancestor_id_#{ascestor_id}",
+        UpdateOpinionDescendantsCountWorker.new(%{"opinion_id" => ascestor_id})
+      )
+    end)
+  end
+
+  defp maybe_enqueue_update_author_public_figure(multi, attrs) do
+    author_id = attrs["author_id"] || attrs[:author_id]
+    source_url = attrs["source_url"] || attrs[:source_url]
+    source_text = attrs["source_text"] || attrs[:source_text]
+
+    if author_id && (source_url || source_text) do
+      Ecto.Multi.insert(
+        multi,
+        :update_author_public_figure,
+        UpdateAuthorPublicFigureWorker.new(%{"author_id" => author_id})
+      )
+    else
+      multi
+    end
+  end
+
+  defp enqueue_sync_opinions_count(multi, []), do: multi
+
+  defp enqueue_sync_opinions_count(multi, statement_ids) do
+    Enum.reduce(statement_ids, multi, fn statement_id, multi ->
+      Ecto.Multi.insert(
+        multi,
+        "sync_opinions_count_#{statement_id}",
+        SyncStatementOpinionsCountWorker.new(%{"statement_id" => statement_id})
+      )
+    end)
+  end
+
+  defp handle_transaction_result({:ok, %{opinion: opinion}}), do: {:ok, opinion}
+
+  defp handle_transaction_result({:error, _, failed_operation, _changes}) do
+    {:error, failed_operation}
+  end
+
+  @doc """
+  Updates a opinion.
+
+  ## Examples
+
+      iex> update_opinion(opinion, %{field: new_value})
+      {:ok, %Opinion{}}
+
+      iex> update_opinion(opinion, %{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def update_opinion(%Opinion{} = opinion, attrs, opts \\ []) when is_list(opts) do
+    attrs = Opinion.normalize_attrs(attrs)
+
+    case Opinion.changeset(opinion, attrs) do
+      %{valid?: false} = changeset ->
+        {:error, changeset}
+
+      _valid_changeset ->
+        attrs = ContentEmbedding.put(attrs, opinion)
+        changeset = Opinion.changeset(opinion, attrs)
+        result = Repo.update(changeset)
+        maybe_update_vote_author_on_opinion_update(result, opinion, changeset)
+        maybe_reverify_quote_on_update(result, changeset, opts)
+        maybe_endorse_updated_opinion(result, changeset, opts)
+    end
+  end
+
+  @doc """
+  Updates an opinion using only fields permitted in user-facing edit forms.
+
+  This boundary prevents crafted form parameters from changing internal fields
+  accepted by the broader changeset used by trusted application workflows.
+  """
+  def update_opinion_from_user(%Opinion{} = opinion, attrs, opts \\ []) when is_list(opts) do
+    update_opinion(opinion, Opinion.user_editable_attrs(attrs), opts)
+  end
+
+  defp maybe_update_vote_author_on_opinion_update({:ok, %Opinion{} = updated}, opinion, changeset) do
+    if Map.has_key?(changeset.changes, :author_id) and updated.author_id != opinion.author_id do
+      Votes.update_author_for_opinion_votes(updated.id, updated.author_id)
+    end
+
+    :ok
+  end
+
+  defp maybe_update_vote_author_on_opinion_update(_result, _opinion, _changeset), do: :ok
+
+  # Re-verify a quote only when quote identity/evidence fields changed (not on count-only updates).
+  defp maybe_reverify_quote_on_update(
+         {:ok, %Opinion{id: id} = opinion},
+         changeset,
+         opts
+       ) do
+    if Opinion.quote?(opinion) && quote_reverification_field_changed?(changeset) &&
+         automatic_verifications_enabled?() &&
+         not author_endorsed_update?(opinion, changeset, opts) do
+      enqueue_quote_verification(id, opts)
+    end
+
+    :ok
+  end
+
+  defp maybe_reverify_quote_on_update(_result, _changeset, _opts), do: :ok
+
+  @doc """
+  Deletes a opinion.
+
+  ## Examples
+
+      iex> delete_opinion(opinion)
+      {:ok, %Opinion{}}
+
+      iex> delete_opinion(opinion)
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def delete_opinion(%Opinion{} = opinion) do
+    # Get affected statement IDs before deletion
+    statement_ids =
+      from(os in "opinions_statements",
+        where: os.opinion_id == ^opinion.id,
+        select: os.statement_id,
+        distinct: true
+      )
+      |> Repo.all()
+
+    Ecto.Multi.new()
+    |> maybe_delete_inferred_quote_votes(opinion, statement_ids)
+    |> Ecto.Multi.delete(:opinion, opinion)
+    |> enqueue_update_ancestor_counts(opinion.ancestry)
+    |> enqueue_sync_opinions_count(statement_ids)
+    |> Repo.transaction()
+    |> handle_transaction_result()
+  end
+
+  # Not a quote (no source_url and no source_text): nothing to clean up.
+  defp maybe_delete_inferred_quote_votes(
+         multi,
+         %Opinion{source_url: nil, source_text: nil},
+         _statement_ids
+       ),
+       do: multi
+
+  defp maybe_delete_inferred_quote_votes(multi, %Opinion{author_id: nil}, _statement_ids),
+    do: multi
+
+  defp maybe_delete_inferred_quote_votes(multi, _opinion, []), do: multi
+
+  defp maybe_delete_inferred_quote_votes(
+         multi,
+         %Opinion{id: opinion_id, author_id: author_id},
+         statement_ids
+       ) do
+    Ecto.Multi.run(multi, :inferred_quote_votes, fn _repo, _changes ->
+      votes =
+        from(v in Vote,
+          where:
+            v.author_id == ^author_id and v.statement_id in ^statement_ids and
+              v.opinion_id == ^opinion_id
+        )
+        |> Repo.all()
+
+      reassign_or_delete_current_quote_votes(votes, author_id, opinion_id)
+    end)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking opinion changes.
+
+  ## Examples
+
+      iex> change_opinion(opinion)
+      %Ecto.Changeset{data: %Opinion{}}
+
+  """
+  def change_opinion(%Opinion{} = opinion, attrs \\ %{}) do
+    Opinion.changeset(opinion, attrs)
+  end
+
+  def exists?(opts) do
+    query = build_query(opts)
+    Repo.exists?(query)
+  end
+
+  def list_sourced_statement_opinions_by_author(_statement_id, []), do: %{}
+
+  def list_sourced_statement_opinions_by_author(statement_id, author_ids)
+      when is_integer(statement_id) and is_list(author_ids) do
+    author_ids = Enum.reject(author_ids, &is_nil/1)
+
+    from(o in Opinion,
+      join: os in "opinions_statements",
+      on: os.opinion_id == o.id,
+      where:
+        os.statement_id == ^statement_id and o.author_id in ^author_ids and
+          not (is_nil(o.source_url) and is_nil(o.source_text)),
+      order_by: [
+        desc:
+          fragment(
+            "CASE WHEN ? IN ('verified', 'ai_verified', 'endorsed') THEN 1 ELSE 0 END",
+            o.verification_status
+          ),
+        desc_nulls_last: o.date,
+        desc: o.id
+      ],
+      preload: [:author]
+    )
+    |> Repo.all()
+    |> Enum.group_by(& &1.author_id)
+  end
+
+  def list_sourced_statement_opinions_by_statement_and_author(statement_ids, author_ids)
+      when is_list(statement_ids) and is_list(author_ids) do
+    statement_ids = statement_ids |> Enum.reject(&is_nil/1) |> Enum.uniq()
+    author_ids = author_ids |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    if statement_ids == [] or author_ids == [] do
+      %{}
+    else
+      from(o in Opinion,
+        join: os in "opinions_statements",
+        on: os.opinion_id == o.id,
+        where:
+          os.statement_id in ^statement_ids and o.author_id in ^author_ids and
+            not (is_nil(o.source_url) and is_nil(o.source_text)),
+        order_by: [
+          asc: os.statement_id,
+          asc: o.author_id,
+          desc:
+            fragment(
+              "CASE WHEN ? IN ('verified', 'ai_verified', 'endorsed') THEN 1 ELSE 0 END",
+              o.verification_status
+            ),
+          desc_nulls_last: o.date,
+          desc: o.id
+        ],
+        preload: [:author],
+        select: {os.statement_id, o}
+      )
+      |> Repo.all()
+      |> Enum.group_by(
+        fn {statement_id, opinion} -> {statement_id, opinion.author_id} end,
+        fn {_statement_id, opinion} -> opinion end
+      )
+    end
+  end
+
+  defp build_query(opts) do
+    base_query = from(o in Opinion)
+
+    Enum.reduce(opts, base_query, fn
+      {:ids, ids}, query ->
+        from q in query, where: q.id in ^ids
+
+      {:exclude_ids, exclude_ids}, query ->
+        from q in query, where: q.id not in ^exclude_ids
+
+      {:id_less_than, id}, query ->
+        from q in query, where: q.id < ^id
+
+      {:id_greater_than, id}, query ->
+        from q in query, where: q.id > ^id
+
+      {:quote_date_cursor, {:desc, nil, id}}, query ->
+        from q in query, where: is_nil(q.date) and q.id < ^id
+
+      {:quote_date_cursor, {:desc, date, id}}, query ->
+        from q in query,
+          where:
+            is_nil(q.date) or q.date < ^date or
+              (q.date == ^date and q.id < ^id)
+
+      {:quote_date_cursor, {:asc, nil, id}}, query ->
+        from q in query, where: is_nil(q.date) and q.id > ^id
+
+      {:quote_date_cursor, {:asc, date, id}}, query ->
+        from q in query,
+          where:
+            is_nil(q.date) or q.date > ^date or
+              (q.date == ^date and q.id > ^id)
+
+      {:author_ids, author_ids}, query ->
+        from q in query, where: q.author_id in ^author_ids
+
+      {:statement_ids, statement_ids}, query ->
+        from q in query,
+          join: ov in "opinions_statements",
+          on: ov.opinion_id == q.id,
+          where: ov.statement_id in ^statement_ids
+
+      {:hall_name, hall_name}, query when not is_nil(hall_name) ->
+        # Use a subquery to avoid DISTINCT ON ordering issues
+        hall_opinion_ids =
+          from q in Opinion,
+            join: ov in "opinions_statements",
+            on: ov.opinion_id == q.id,
+            join: v in "statements",
+            on: ov.statement_id == v.id,
+            join: hv in "halls_statements",
+            on: hv.statement_id == v.id,
+            join: h in "halls",
+            on: hv.hall_id == h.id,
+            where: h.name == ^hall_name,
+            select: q.id
+
+        from q in query, where: q.id in subquery(hall_opinion_ids)
+
+      {:has_statements, true}, query ->
+        from q in query,
+          where:
+            fragment(
+              "EXISTS (SELECT 1 FROM opinions_statements os WHERE os.opinion_id = ?)",
+              q.id
+            )
+
+      {:content, content}, query ->
+        from q in query, where: q.content == ^content
+
+      {:content_contains, content}, query ->
+        from q in query, where: ilike(q.content, ^"%#{content}%")
+
+      {:search, search}, query ->
+        terms = APX.SearchParser.parse(search)
+
+        Enum.reduce(terms, query, fn term, query_acc ->
+          term_pattern = "%#{term}%"
+
+          from q in query_acc,
+            join: a in assoc(q, :author),
+            where: ilike(q.content, ^term_pattern) or ilike(a.name, ^term_pattern)
+        end)
+
+      {:initial_ancestry, ancestry}, query ->
+        from q in query, where: fragment("? LIKE ?", q.ancestry, ^"#{ancestry}/%")
+
+      {:ancestry, nil}, query ->
+        from q in query, where: is_nil(q.ancestry)
+
+      {:ancestry, ancestry}, query ->
+        from q in query, where: q.ancestry == ^"#{ancestry}"
+
+      {:only_quotes, true}, query ->
+        from q in query, where: not (is_nil(q.source_url) and is_nil(q.source_text))
+
+      {:year, year}, query ->
+        from q in query,
+          where: fragment("EXTRACT(YEAR FROM ?)::integer = ?", q.date, ^year)
+
+      {:exclude_source_prefixes, prefixes}, query ->
+        prefixes
+        |> List.wrap()
+        |> Enum.reject(&is_nil/1)
+        |> Enum.reduce(query, fn prefix, query_acc ->
+          pattern = "#{prefix}%"
+
+          from q in query_acc,
+            where: is_nil(q.source_url) or not ilike(q.source_url, ^pattern)
+        end)
+
+      {:twin, twin_value}, query ->
+        from q in query, where: q.twin == ^twin_value
+
+      {:include_twins, include_twins}, query ->
+        from q in query, where: q.twin == ^include_twins or q.twin == false
+
+      {:is_verified, true}, query ->
+        from q in query, where: not is_nil(q.verification_status)
+
+      {:is_verified, false}, query ->
+        from q in query, where: is_nil(q.verification_status)
+
+      {:statuses, statuses}, query when is_list(statuses) ->
+        filter_by_statuses(query, statuses)
+
+      {:statuses, nil}, query ->
+        query
+
+      {:needs_verification, true}, query ->
+        # Any of the three dimensions still pending: the quote's own authenticity,
+        # the relevance of any of its statement links, or any of its votes' answers.
+        from q in query,
+          where:
+            is_nil(q.verification_status) or
+              fragment(
+                "EXISTS (SELECT 1 FROM opinions_statements os WHERE os.opinion_id = ? AND os.verification_status IS NULL)",
+                q.id
+              ) or
+              fragment(
+                """
+                EXISTS (
+                  SELECT 1
+                  FROM votes v
+                  WHERE v.opinion_id = ?
+                    AND v.verification_status IS NULL
+                    AND EXISTS (
+                      SELECT 1
+                      FROM opinions_statements os
+                      WHERE os.opinion_id = ?
+                        AND os.statement_id = v.statement_id
+                        AND os.verification_status IN ('endorsed', 'verified', 'ai_verified')
+                    )
+                    AND (
+                      v.author_id = ?
+                      OR NOT EXISTS (
+                        SELECT 1
+                        FROM votes author_vote
+                        WHERE author_vote.statement_id = v.statement_id
+                          AND author_vote.author_id = ?
+                      )
+                    )
+                )
+                """,
+                q.id,
+                q.id,
+                q.author_id,
+                q.author_id
+              )
+
+      {:needs_quote_review, true}, query ->
+        from q in query,
+          where:
+            is_nil(q.verification_status) or
+              (q.verification_status in ^@positive_verification_statuses and
+                 (fragment(
+                    """
+                    EXISTS (
+                      SELECT 1
+                      FROM opinions_statements os
+                      WHERE os.opinion_id = ?
+                        AND os.verification_status IS NULL
+                    )
+                    """,
+                    q.id
+                  ) or
+                    fragment(
+                      """
+                      EXISTS (
+                        SELECT 1
+                        FROM votes v
+                        WHERE v.opinion_id = ?
+                          AND v.verification_status IS NULL
+                          AND EXISTS (
+                            SELECT 1
+                            FROM opinions_statements os
+                            WHERE os.opinion_id = ?
+                              AND os.statement_id = v.statement_id
+                              AND os.verification_status IN ('endorsed', 'verified', 'ai_verified')
+                          )
+                          AND (
+                            v.author_id = ?
+                            OR NOT EXISTS (
+                              SELECT 1
+                              FROM votes author_vote
+                              WHERE author_vote.statement_id = v.statement_id
+                                AND author_vote.author_id = ?
+                            )
+                          )
+                      )
+                      """,
+                      q.id,
+                      q.id,
+                      q.author_id,
+                      q.author_id
+                    )))
+
+      {:preload, preloads}, query ->
+        from q in query, preload: ^preloads
+
+      {:order_by, order}, query ->
+        from q in query, order_by: ^order
+
+      {:limit, limit}, query ->
+        from q in query, limit: ^limit
+
+      {:offset, offset}, query ->
+        from q in query, offset: ^offset
+
+      {key, value}, query when is_atom(key) ->
+        from q in query, where: field(q, ^key) == ^value
+
+      _, query ->
+        query
+    end)
+  end
+
+  # Restricts a query to opinions whose `verification_status` is in `statuses`.
+  # A `nil` entry matches unverified quotes (those without a status).
+  defp filter_by_statuses(query, statuses) when is_list(statuses) do
+    {nils, concrete} = Enum.split_with(statuses, &is_nil/1)
+
+    cond do
+      concrete == [] and nils == [] ->
+        query
+
+      concrete == [] ->
+        from q in query, where: is_nil(q.verification_status)
+
+      nils == [] ->
+        from q in query, where: q.verification_status in ^concrete
+
+      true ->
+        from q in query,
+          where: is_nil(q.verification_status) or q.verification_status in ^concrete
+    end
+  end
+
+  defp filter_by_statuses(query, _statuses), do: query
+
+  def delete_opinion_and_descendants(%Opinion{} = opinion) do
+    subtree_ids = Opinion.subtree_ids(opinion)
+
+    # Get affected statement IDs before deletion
+    statement_ids =
+      from(os in "opinions_statements",
+        where: os.opinion_id in ^subtree_ids,
+        select: os.statement_id,
+        distinct: true
+      )
+      |> Repo.all()
+
+    result = Repo.delete_all(from o in Opinion, where: o.id in ^subtree_ids)
+
+    Ecto.Multi.new()
+    |> enqueue_update_ancestor_counts(opinion.ancestry)
+    |> enqueue_sync_opinions_count(statement_ids)
+    |> Repo.transaction()
+
+    result
+  end
+
+  def update_descendants_count(%Opinion{} = opinion) do
+    count = length(Opinion.descendant_ids(opinion))
+
+    changeset = Opinion.changeset(opinion, %{descendants_count: count})
+    Repo.update(changeset)
+  end
+
+  def update_opinion_likes_count(opinion_id) when is_number(opinion_id) do
+    case get_opinion(opinion_id) do
+      nil -> {:error, "Opinion not found"}
+      opinion -> update_opinion_likes_count(opinion)
+    end
+  end
+
+  def update_opinion_likes_count(%Opinion{} = opinion) do
+    count = Likes.count(opinion_id: opinion.id)
+
+    changeset = Opinion.changeset(opinion, %{likes_count: count})
+    Repo.update(changeset)
+  end
+
+  def delete_subopinions(%Opinion{} = opinion) do
+    descendant_ids = Opinion.descendant_ids(opinion)
+    result = Repo.delete_all(from o in Opinion, where: o.id in ^descendant_ids)
+    update_descendants_count(opinion)
+    result
+  end
+
+  def count(opts \\ []) do
+    opts
+    |> build_query()
+    |> exclude(:preload)
+    |> exclude(:order_by)
+    |> exclude(:limit)
+    |> exclude(:offset)
+    |> Repo.aggregate(:count, :id)
+  end
+
+  @doc """
+  Adds an opinion to a statement by creating an association in the opinions_statements table.
+
+  ## Examples
+
+      iex> add_opinion_to_statement(opinion, statement)
+      {:ok, %Opinion{}}
+
+      iex> add_opinion_to_statement(opinion, statement)
+      {:error, %Ecto.Changeset{}}
+  """
+  def add_opinion_to_statement(%Opinion{} = opinion, statement_id)
+      when is_integer(statement_id) do
+    statement = APX.Statements.get_statement!(statement_id)
+    add_opinion_to_statement(opinion, statement)
+  end
+
+  def add_opinion_to_statement(
+        %Opinion{} = opinion,
+        %APX.Statements.Statement{} = statement
+      ) do
+    add_opinion_to_statement(opinion, statement, opinion.user_id)
+  end
+
+  def add_opinion_to_statement(
+        %Opinion{} = opinion,
+        %APX.Statements.Statement{} = statement,
+        user_id
+      )
+      when not is_nil(user_id) do
+    add_opinion_to_statement(opinion, statement, user_id, [])
+  end
+
+  def add_opinion_to_statement(
+        %Opinion{} = _opinion,
+        %APX.Statements.Statement{} = _statement,
+        _user_id
+      ) do
+    {:error, :user_id_required}
+  end
+
+  def add_opinion_to_statement(
+        %Opinion{} = opinion,
+        %APX.Statements.Statement{} = statement,
+        user_id,
+        opts
+      )
+      when not is_nil(user_id) and is_list(opts) do
+    with :ok <- ensure_not_already_associated(opinion.id, statement.id) do
+      opinion_statement_changeset =
+        OpinionStatement.changeset(%OpinionStatement{}, %{
+          opinion_id: opinion.id,
+          statement_id: statement.id,
+          user_id: user_id
+        })
+
+      result =
+        Ecto.Multi.new()
+        |> Ecto.Multi.insert(:opinion_statement, opinion_statement_changeset)
+        |> Ecto.Multi.insert(
+          :sync_opinions_count,
+          SyncStatementOpinionsCountWorker.new(%{"statement_id" => statement.id})
+        )
+        |> maybe_enqueue_relevance_verification(opinion, opts)
+        |> maybe_update_current_quote_vote(opinion, statement)
+        |> Repo.transaction()
+
+      case result do
+        {:ok, %{opinion_statement: opinion_statement}} ->
+          Endorsements.endorse_opinion(opinion, user_id, include_existing_context: false)
+          Endorsements.endorse_opinion_statement(opinion_statement, user_id)
+
+          {:ok, Repo.preload(opinion, :statements)}
+
+        {:error, :opinion_statement, changeset, _} ->
+          {:error, changeset}
+
+        {:error, _, _, _} ->
+          {:error, :transaction_failed}
+      end
+    end
+  end
+
+  def add_opinion_to_statement(
+        %Opinion{} = _opinion,
+        %APX.Statements.Statement{} = _statement,
+        _user_id,
+        _opts
+      ) do
+    {:error, :user_id_required}
+  end
+
+  defp ensure_not_already_associated(opinion_id, statement_id) do
+    case Repo.get_by(OpinionStatement, opinion_id: opinion_id, statement_id: statement_id) do
+      nil -> :ok
+      _ -> {:error, :already_associated}
+    end
+  end
+
+  defp maybe_enqueue_relevance_verification(multi, %Opinion{id: opinion_id}, opts) do
+    if automatic_verifications_enabled?() &&
+         Keyword.get(opts, :trigger_relevance_verification, true) &&
+         relevance_verification_ready?(opinion_id) do
+      Oban.insert(multi, :relevance_verification, fn %{opinion_statement: opinion_statement} ->
+        VerificationWorker.new(%{"subject" => "relevance", "id" => opinion_statement.id})
+      end)
+    else
+      multi
+    end
+  end
+
+  defp automatic_verifications_enabled? do
+    FeatureFlags.enabled?(:automatic_verifications)
+  end
+
+  defp relevance_verification_ready?(opinion_id) do
+    from(o in Opinion, where: o.id == ^opinion_id, select: o.verification_status)
+    |> Repo.one()
+    |> VerificationStatus.positive?()
+  end
+
+  defp maybe_endorse_created_opinion({:ok, %{opinion: opinion} = changes}, user_id) do
+    Endorsements.endorse_opinion(opinion, user_id, include_existing_context: false)
+
+    {:ok, %{changes | opinion: get_opinion!(opinion.id)}}
+  end
+
+  defp maybe_endorse_created_opinion(result, _user_id), do: result
+
+  defp maybe_endorse_updated_opinion({:ok, %Opinion{} = opinion}, changeset, opts) do
+    actor_user = opts[:actor_user] || value_from_attrs(changeset.params || %{}, :user_id)
+
+    if endorsement_field_changed?(changeset) do
+      Endorsements.endorse_opinion(opinion, actor_user, allow_twin: true)
+      {:ok, get_opinion!(opinion.id)}
+    else
+      {:ok, opinion}
+    end
+  end
+
+  defp maybe_endorse_updated_opinion(result, _changeset, _opts), do: result
+
+  defp endorsement_field_changed?(changeset) do
+    Enum.any?(@quote_reverification_fields ++ [:twin], &Map.has_key?(changeset.changes, &1))
+  end
+
+  defp quote_reverification_field_changed?(changeset) do
+    Enum.any?(@quote_reverification_fields, &Map.has_key?(changeset.changes, &1))
+  end
+
+  defp author_endorsed_update?(opinion, changeset, opts) do
+    actor_user = opts[:actor_user] || value_from_attrs(changeset.params || %{}, :user_id)
+    user = Endorsements.get_user(actor_user)
+
+    Endorsements.author_user?(user, opinion)
+  end
+
+  defp value_from_attrs(attrs, key) when is_map(attrs) do
+    Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  end
+
+  def remove_opinion_from_statement(%Opinion{} = opinion, statement_id)
+      when is_integer(statement_id) do
+    statement = APX.Statements.get_statement!(statement_id)
+    remove_opinion_from_statement(opinion, statement)
+  end
+
+  def remove_opinion_from_statement(
+        %Opinion{} = opinion,
+        %APX.Statements.Statement{} = statement
+      ) do
+    case Repo.get_by(OpinionStatement,
+           opinion_id: opinion.id,
+           statement_id: statement.id
+         ) do
+      nil ->
+        {:error, :not_associated}
+
+      %OpinionStatement{} = opinion_statement ->
+        result =
+          Ecto.Multi.new()
+          |> Ecto.Multi.delete(:opinion_statement, opinion_statement)
+          |> Ecto.Multi.insert(
+            :sync_opinions_count,
+            SyncStatementOpinionsCountWorker.new(%{"statement_id" => statement.id})
+          )
+          |> maybe_reassign_or_delete_current_quote_vote(opinion, statement)
+          |> Repo.transaction()
+
+        case result do
+          {:ok, _} ->
+            {:ok, Repo.preload(opinion, :statements)}
+
+          {:error, :opinion_statement, changeset, _} ->
+            {:error, changeset}
+
+          {:error, _, _, _} ->
+            {:error, :transaction_failed}
+        end
+    end
+  end
+
+  defp maybe_update_current_quote_vote(
+         multi,
+         %Opinion{source_url: source_url, source_text: source_text, author_id: author_id} =
+           opinion,
+         statement
+       )
+       when not (is_nil(source_url) and is_nil(source_text)) and not is_nil(author_id) do
+    Ecto.Multi.run(multi, :current_quote_vote, fn _repo, _changes ->
+      case Votes.get_by(%{author_id: author_id, statement_id: statement.id}) do
+        nil -> {:ok, nil}
+        vote -> Votes.update_vote(vote, %{opinion_id: opinion.id, twin: false})
+      end
+    end)
+  end
+
+  defp maybe_update_current_quote_vote(multi, _opinion, _statement), do: multi
+
+  defp maybe_reassign_or_delete_current_quote_vote(
+         multi,
+         %Opinion{source_url: source_url, source_text: source_text, author_id: author_id} =
+           opinion,
+         statement
+       )
+       when not (is_nil(source_url) and is_nil(source_text)) and not is_nil(author_id) do
+    Ecto.Multi.run(multi, :current_quote_vote, fn _repo, _changes ->
+      case Votes.get_by(%{
+             author_id: author_id,
+             statement_id: statement.id,
+             opinion_id: opinion.id
+           }) do
+        nil ->
+          {:ok, nil}
+
+        vote ->
+          reassign_or_delete_current_quote_votes([vote], author_id, opinion.id)
+      end
+    end)
+  end
+
+  defp maybe_reassign_or_delete_current_quote_vote(multi, _opinion, _statement), do: multi
+
+  defp reassign_or_delete_current_quote_votes(votes, author_id, removed_opinion_id) do
+    Enum.reduce_while(votes, {:ok, []}, fn vote, {:ok, changed_votes} ->
+      case next_sourced_statement_opinion(vote.statement_id, author_id, removed_opinion_id) do
+        %Opinion{} = replacement ->
+          case Votes.update_vote(vote, %{opinion_id: replacement.id, twin: false}) do
+            {:ok, updated_vote} -> {:cont, {:ok, [updated_vote | changed_votes]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+
+        nil ->
+          case Votes.delete_vote(vote) do
+            {:ok, deleted_vote} -> {:cont, {:ok, [deleted_vote | changed_votes]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+      end
+    end)
+  end
+
+  defp next_sourced_statement_opinion(statement_id, author_id, removed_opinion_id) do
+    from(o in Opinion,
+      join: os in "opinions_statements",
+      on: os.opinion_id == o.id,
+      where:
+        os.statement_id == ^statement_id and o.author_id == ^author_id and
+          o.id != ^removed_opinion_id and not (is_nil(o.source_url) and is_nil(o.source_text)),
+      order_by: [fragment("? DESC NULLS LAST", o.date), desc: o.id],
+      limit: 1
+    )
+    |> Repo.one()
+  end
+end

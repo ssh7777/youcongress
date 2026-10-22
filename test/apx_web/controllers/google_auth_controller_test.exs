@@ -1,0 +1,414 @@
+defmodule APXWeb.GoogleAuthControllerTest do
+  use APXWeb.ConnCase, async: false
+
+  import Mock
+  import APX.AccountsFixtures
+  import APX.AuthorsFixtures
+  import ExUnit.CaptureLog
+
+  alias APX.Google.GoogleAPI
+  alias APX.Authors
+
+  @google_user_data %{
+    google_id: "123456789",
+    email: "testuser@gmail.com",
+    name: "Test User",
+    profile_image_url: "https://lh3.googleusercontent.com/a/photo.jpg",
+    email_verified: true
+  }
+
+  describe "GET /auth/google" do
+    test "redirects to Google authorization URL when configured", %{conn: conn} do
+      Application.put_env(:apx, :google_client_id, "test_client_id")
+
+      Application.put_env(
+        :apx,
+        :google_callback_url,
+        "https://test.com/auth/google/callback"
+      )
+
+      conn = get(conn, ~p"/auth/google")
+
+      assert redirected_to(conn) =~ "https://accounts.google.com/o/oauth2/v2/auth"
+      assert get_session(conn, :google_oauth_state)
+    end
+
+    test "stores return_to from the login session when redirecting to Google", %{conn: conn} do
+      Application.put_env(:apx, :google_client_id, "test_client_id")
+
+      Application.put_env(
+        :apx,
+        :google_callback_url,
+        "https://test.com/auth/google/callback"
+      )
+
+      conn =
+        conn
+        |> init_test_session(%{user_return_to: "/p/test-statement"})
+        |> put_req_header("referer", "http://www.example.com/log_in")
+        |> get(~p"/auth/google")
+
+      assert redirected_to(conn) =~ "https://accounts.google.com/o/oauth2/v2/auth"
+      assert get_session(conn, :oauth_return_to) == "/p/test-statement"
+    end
+
+    test "stores return_to from a same-origin referrer when redirecting to Google", %{conn: conn} do
+      Application.put_env(:apx, :google_client_id, "test_client_id")
+
+      Application.put_env(
+        :apx,
+        :google_callback_url,
+        "https://test.com/auth/google/callback"
+      )
+
+      conn =
+        conn
+        |> put_req_header("referer", "http://www.example.com/p/test-statement?tab=quotes")
+        |> get(~p"/auth/google")
+
+      assert redirected_to(conn) =~ "https://accounts.google.com/o/oauth2/v2/auth"
+      assert get_session(conn, :oauth_return_to) == "/p/test-statement?tab=quotes"
+    end
+
+    test "redirects to login with error when not configured", %{conn: conn} do
+      Application.put_env(:apx, :google_client_id, nil)
+      Application.put_env(:apx, :google_callback_url, nil)
+
+      conn = conn |> get(~p"/auth/google") |> fetch_flash()
+
+      assert redirected_to(conn) == ~p"/log_in"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Google authentication is not configured."
+    end
+  end
+
+  describe "GET /auth/google/callback" do
+    setup do
+      Application.put_env(:apx, :google_client_id, "test_client_id")
+      Application.put_env(:apx, :google_client_secret, "test_client_secret")
+
+      Application.put_env(
+        :apx,
+        :google_callback_url,
+        "https://test.com/auth/google/callback"
+      )
+
+      :ok
+    end
+
+    test "redirects to login when state doesn't match", %{conn: conn} do
+      conn =
+        conn
+        |> init_test_session(%{google_oauth_state: "stored_state"})
+        |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "wrong_state"})
+        |> fetch_flash()
+
+      assert redirected_to(conn) == ~p"/log_in"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Authentication failed. Please try again."
+    end
+
+    test "redirects to login when OAuth error is returned", %{conn: conn} do
+      conn =
+        conn
+        |> init_test_session(%{})
+        |> get(~p"/auth/google/callback", %{
+          "error" => "access_denied",
+          "error_description" => "User denied access"
+        })
+        |> fetch_flash()
+
+      assert redirected_to(conn) == ~p"/log_in"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Authentication was cancelled or denied."
+    end
+
+    test "redirects to login when OAuth error without description is returned", %{conn: conn} do
+      conn =
+        conn
+        |> init_test_session(%{})
+        |> get(~p"/auth/google/callback", %{"error" => "access_denied"})
+        |> fetch_flash()
+
+      assert redirected_to(conn) == ~p"/log_in"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Authentication was cancelled or denied."
+    end
+
+    test "redirects to login when callback has no recognized params", %{conn: conn} do
+      conn =
+        conn
+        |> init_test_session(%{})
+        |> get(~p"/auth/google/callback", %{})
+        |> fetch_flash()
+
+      assert redirected_to(conn) == ~p"/log_in"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Authentication failed. Please try again."
+    end
+
+    test "redirects to login when token exchange fails", %{conn: conn} do
+      with_mock GoogleAPI, fetch_token: fn _code, _url -> {:error, "Token error"} end do
+        capture_log(fn ->
+          conn =
+            conn
+            |> init_test_session(%{google_oauth_state: "valid_state"})
+            |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+            |> fetch_flash()
+
+          assert redirected_to(conn) == ~p"/log_in"
+
+          assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+                   "Authentication failed. Please try again."
+        end)
+      end
+    end
+
+    test "redirects to login when user info fetch fails", %{conn: conn} do
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:error, "User info error"} end do
+        capture_log(fn ->
+          conn =
+            conn
+            |> init_test_session(%{google_oauth_state: "valid_state"})
+            |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+            |> fetch_flash()
+
+          assert redirected_to(conn) == ~p"/log_in"
+
+          assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+                   "Failed to retrieve your Google profile. Please try again."
+        end)
+      end
+    end
+
+    test "rejects an unverified Google email before linking or login", %{conn: conn} do
+      x_author_attrs = %{
+        name: "Existing User",
+        twitter_username: "existing_user",
+        twitter_id_str: "twitter_existing",
+        twin_origin: false
+      }
+
+      user = user_fixture(%{email: @google_user_data.email}, x_author_attrs)
+      author = APX.Repo.preload(user, :author).author
+      unverified_data = %{@google_user_data | email_verified: false}
+
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, unverified_data} end do
+        capture_log(fn ->
+          conn =
+            conn
+            |> init_test_session(%{google_oauth_state: "valid_state"})
+            |> get(~p"/auth/google/callback", %{
+              "code" => "auth_code",
+              "state" => "valid_state"
+            })
+            |> fetch_flash()
+
+          assert redirected_to(conn) == ~p"/log_in"
+          refute get_session(conn, :user_token)
+
+          assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+                   "Google must verify your email before you can sign in."
+
+          assert is_nil(Authors.get_author!(author.id).google_id)
+        end)
+      end
+    end
+
+    test "rejects an unverified email for an already linked Google identity", %{conn: conn} do
+      author_attrs = %{
+        name: "Existing Google User",
+        google_id: @google_user_data.google_id,
+        twin_origin: false
+      }
+
+      google_user_fixture(%{email: @google_user_data.email}, author_attrs)
+      unverified_data = %{@google_user_data | email_verified: false}
+
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, unverified_data} end do
+        capture_log(fn ->
+          conn =
+            conn
+            |> init_test_session(%{google_oauth_state: "valid_state"})
+            |> get(~p"/auth/google/callback", %{
+              "code" => "auth_code",
+              "state" => "valid_state"
+            })
+
+          assert redirected_to(conn) == ~p"/log_in"
+          refute get_session(conn, :user_token)
+        end)
+      end
+    end
+
+    test "creates new user and author for new Google user", %{conn: conn} do
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, @google_user_data} end do
+        conn =
+          conn
+          |> init_test_session(%{google_oauth_state: "valid_state"})
+          |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+          |> fetch_flash()
+
+        assert redirected_to(conn) == ~p"/"
+
+        assert get_session(conn, :user_token)
+
+        # Verify author was created
+        author = Authors.get_author_by_google_id(@google_user_data.google_id)
+        assert author
+        assert author.name == @google_user_data.name
+      end
+    end
+
+    test "logs in existing user with linked author", %{conn: conn} do
+      # Create an existing user with author
+      author_attrs = %{
+        name: "Existing User",
+        google_id: @google_user_data.google_id,
+        twin_origin: false
+      }
+
+      user = google_user_fixture(%{email: @google_user_data.email}, author_attrs)
+
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, @google_user_data} end do
+        conn =
+          conn
+          |> init_test_session(%{google_oauth_state: "valid_state"})
+          |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+          |> fetch_flash()
+
+        assert redirected_to(conn) == ~p"/"
+        assert get_session(conn, :user_token)
+
+        # Verify the same user was logged in
+        logged_in_user =
+          APX.Accounts.get_user_by_session_token(get_session(conn, :user_token))
+
+        assert logged_in_user.id == user.id
+      end
+    end
+
+    test "redirects existing users to the stored OAuth return_to", %{conn: conn} do
+      author_attrs = %{
+        name: "Existing User",
+        google_id: @google_user_data.google_id,
+        twin_origin: false
+      }
+
+      google_user_fixture(%{email: @google_user_data.email}, author_attrs)
+
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, @google_user_data} end do
+        conn =
+          conn
+          |> init_test_session(%{
+            google_oauth_state: "valid_state",
+            oauth_return_to: "/p/test-statement"
+          })
+          |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+
+        assert redirected_to(conn) == "/p/test-statement"
+        assert get_session(conn, :user_token)
+      end
+    end
+
+    test "creates user for existing author without user", %{conn: conn} do
+      # Create an author without a linked user
+      author = author_fixture(google_id: @google_user_data.google_id)
+
+      # Verify no user is linked
+      assert APX.Accounts.get_user_by_author_id(author.id) == nil
+
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, @google_user_data} end do
+        conn =
+          conn
+          |> init_test_session(%{google_oauth_state: "valid_state"})
+          |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+          |> fetch_flash()
+
+        assert redirected_to(conn) == ~p"/"
+
+        assert get_session(conn, :user_token)
+
+        # Verify user was created and linked to existing author
+        new_user = APX.Accounts.get_user_by_author_id(author.id)
+        assert new_user
+      end
+    end
+
+    test "clears session data after callback", %{conn: conn} do
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, @google_user_data} end do
+        conn =
+          conn
+          |> init_test_session(%{google_oauth_state: "valid_state"})
+          |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+
+        # OAuth session data should be cleared
+        refute get_session(conn, :google_oauth_state)
+      end
+    end
+
+    test "links Google account to existing X user with same email", %{conn: conn} do
+      # Create a user via X (twitter) with the same email as the Google user
+      x_author_attrs = %{
+        name: "X User",
+        twitter_username: "xuser",
+        twitter_id_str: "twitter_123",
+        twin_origin: false
+      }
+
+      x_user = user_fixture(%{email: @google_user_data.email}, x_author_attrs)
+
+      # Verify the author doesn't have google_id yet
+      x_user_author = APX.Repo.preload(x_user, :author).author
+      assert is_nil(x_user_author.google_id)
+
+      with_mock GoogleAPI,
+        fetch_token: fn _code, _url -> {:ok, "access_token"} end,
+        fetch_user_info: fn _token -> {:ok, @google_user_data} end do
+        conn =
+          conn
+          |> init_test_session(%{google_oauth_state: "valid_state"})
+          |> get(~p"/auth/google/callback", %{"code" => "auth_code", "state" => "valid_state"})
+          |> fetch_flash()
+
+        assert redirected_to(conn) == ~p"/"
+
+        assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+                 "Welcome back! Your Google account has been linked."
+
+        assert get_session(conn, :user_token)
+
+        # Verify the same user was logged in
+        logged_in_user =
+          APX.Accounts.get_user_by_session_token(get_session(conn, :user_token))
+
+        assert logged_in_user.id == x_user.id
+
+        # Verify Google ID was linked to the existing author
+        updated_author = APX.Authors.get_author!(x_user_author.id)
+        assert updated_author.google_id == @google_user_data.google_id
+      end
+    end
+  end
+end

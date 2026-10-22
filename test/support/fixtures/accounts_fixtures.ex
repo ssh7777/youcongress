@@ -1,7 +1,7 @@
-defmodule YouCongress.AccountsFixtures do
+defmodule APX.AccountsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `YouCongress.Accounts` context.
+  entities via the `APX.Accounts` context.
   """
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
@@ -36,11 +36,11 @@ defmodule YouCongress.AccountsFixtures do
     {:ok, %{user: user}} =
       attrs
       |> valid_user_attributes()
-      |> YouCongress.Accounts.x_register_user(author_attrs)
+      |> APX.Accounts.x_register_user(author_attrs)
 
     if confirm_email_and_phone_number? do
-      {:ok, user} = YouCongress.Accounts.confirm_user_email(user)
-      {:ok, user} = YouCongress.Accounts.confirm_user_phone(user)
+      {:ok, user} = APX.Accounts.confirm_user_email(user)
+      {:ok, user} = APX.Accounts.confirm_user_phone(user)
 
       user
     else
@@ -52,7 +52,7 @@ defmodule YouCongress.AccountsFixtures do
     {:ok, user} =
       attrs
       |> user_fixture(author_attrs)
-      |> YouCongress.Accounts.update_role("admin")
+      |> APX.Accounts.update_role("admin")
 
     user
   end
@@ -77,11 +77,11 @@ defmodule YouCongress.AccountsFixtures do
       |> Enum.into(%{"email" => unique_user_email()})
 
     {:ok, %{user: user}} =
-      YouCongress.Accounts.google_register_user(user_attrs, author_attrs)
+      APX.Accounts.google_register_user(user_attrs, author_attrs)
 
     if confirm_email_and_phone_number? do
-      {:ok, user} = YouCongress.Accounts.confirm_user_email(user)
-      {:ok, user} = YouCongress.Accounts.confirm_user_phone(user)
+      {:ok, user} = APX.Accounts.confirm_user_email(user)
+      {:ok, user} = APX.Accounts.confirm_user_phone(user)
 
       user
     else

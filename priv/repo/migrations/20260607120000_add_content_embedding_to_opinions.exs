@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddContentEmbeddingToOpinions do
+defmodule APX.Repo.Migrations.AddContentEmbeddingToOpinions do
   use Ecto.Migration
 
   def up do

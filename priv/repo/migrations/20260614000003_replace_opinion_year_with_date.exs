@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.ReplaceOpinionYearWithDate do
+defmodule APX.Repo.Migrations.ReplaceOpinionYearWithDate do
   use Ecto.Migration
 
   def up do

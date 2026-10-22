@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.NormalizeBlankOpinionSources do
+defmodule APX.Repo.Migrations.NormalizeBlankOpinionSources do
   use Ecto.Migration
 
   def up do

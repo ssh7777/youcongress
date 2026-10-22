@@ -1,0 +1,215 @@
+defmodule APXWeb.Router do
+  use APXWeb, :router
+
+  import Oban.Web.Router
+  import APXWeb.UserAuth
+
+  pipeline :browser do
+    plug(:accepts, ["html", "xml", "txt"])
+    plug(:fetch_session)
+    plug(APXWeb.Plugs.AnalyticsConsent)
+    plug(:fetch_live_flash)
+    plug(:put_root_layout, html: {APXWeb.Layouts, :root})
+    plug(:protect_from_forgery)
+    plug(:put_secure_browser_headers)
+    plug(:fetch_current_user)
+    plug(:reject_blocked_user)
+    plug(:redirect_to_user_registration_if_email_unconfirmed)
+  end
+
+  pipeline :mcp do
+    plug(:accepts, ["json"])
+    plug(:fetch_query_params)
+    plug(APXWeb.Plugs.MCPSessionPlug)
+    plug(APXWeb.Plugs.MCPClusterGuard)
+  end
+
+  scope "/", APXWeb do
+    pipe_through(:browser)
+
+    get("/sim", SimController, :index)
+    get("/home", PageController, :redirect_to_home)
+    live("/explore", StatementLive.Index, :index)
+    live("/p/:slug", StatementLive.Show, :show)
+    get("/p/:slug/quotes.csv", StatementController, :quotes_csv)
+    live("/a/:id", AuthorLive.Show, :show)
+    live("/x/:twitter_username", AuthorLive.Show, :show)
+    live("/h/:hall", StatementLive.Index, :index)
+    live("/c/:id", OpinionLive.Show, :show)
+    get("/dataset", PageController, :dataset)
+    get("/dataset.csv", StatementController, :all_quotes_csv)
+    get("/fact-checker", PageController, :redirect_to_fact_checker)
+    live("/verifications", VerificationLive.Index, :index)
+    live("/contact", ContactLive, :new)
+    live("/reconsider", ReconsiderLive.Landing, :index)
+    live(
+      "/independent-policy-verification-framework",
+      PolicyVerificationFrameworkLive,
+      :index
+    )
+
+    get("/terms", PageController, :terms)
+    get("/privacy-policy", PageController, :privacy_policy)
+    get("/sitemap.xml", PageController, :sitemap)
+    get("/robots.txt", PageController, :robots_txt)
+    get("/llms.txt", PageController, :llms_txt)
+    get("/intelligence", IntelligenceController, :index)
+    get("/intelligence/:slug", IntelligenceController, :show)
+    get("/status/24h", PageController, :status_24h)
+
+    get("/waiting_list", PageController, :waiting_list)
+    get("/about", PageController, :about)
+    get("/theory-of-change", PageController, :theory_of_change)
+
+    get("/faq", PageController, :faq)
+    get("/mcp-tools", PageController, :mcp_tools)
+    get("/mcp/claude", PageController, :mcp_claude)
+    get("/mcp/chatgpt", PageController, :mcp_chatgpt)
+    get("/email-login-waiting-list", PageController, :email_login_waiting_list)
+    get("/email-login-waiting-list/thanks", PageController, :email_login_waiting_list_thanks)
+    live("/sign_up", UserRegistrationLive, :new)
+    live("/subscribe", NewsletterLive, :new)
+    live("/newsletter/confirm/:token", NewsletterConfirmationLive, :show)
+    live("/reset_password/:token", ResetPasswordTokenLive, :edit)
+
+    # Legacy redirection from /v/:slug to /p/:slug
+    get("/v/:slug", StatementController, :redirect_to_p)
+  end
+
+  scope "/" do
+    pipe_through(:mcp)
+
+    forward "/mcp", Anubis.Server.Transport.StreamableHTTP.Plug, server: APXWeb.MCPServer
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser, :require_admin_user])
+
+    live("/p/new", StatementLive.Index, :new)
+    live("/p/:slug/edit", StatementLive.Show, :edit)
+    live("/p/:slug/show/edit", StatementLive.Show, :edit)
+
+    live("/authors", AuthorLive.Index, :index)
+    live("/authors/new", AuthorLive.Index, :new)
+    live("/authors/:id/edit", AuthorLive.Show, :edit)
+    live("/authors/:id/show/edit", AuthorLive.Show, :edit)
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser, :require_admin_or_moderator_user])
+
+    live("/verifications/pending", QuoteReviewLive.Index, :index)
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser, :require_authenticated_user])
+
+    live("/welcome", WelcomeLive.Index, :index)
+    live("/p/:slug/add-quote", StatementLive.AddQuote, :add_quote)
+
+    live("/settings", SettingsLive, :settings)
+    live("/landing", HomeLive.Index, :index)
+    get("/account-completion/phone", AccountCompletionController, :phone)
+    post("/account-completion/dismiss-phone", AccountCompletionController, :dismiss_phone)
+
+    post(
+      "/account-completion/dismiss-newsletter",
+      AccountCompletionController,
+      :dismiss_newsletter
+    )
+
+    post("/account-completion/newsletter", AccountCompletionController, :subscribe)
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser, :require_authenticated_user_or_sign_up])
+
+    live("/reconsider/new", ReconsiderLive.New, :new)
+  end
+
+  # Other scopes may use custom stacks.
+  # scope "/api", APXWeb do
+  #   pipe_through :api
+  # end
+
+  # Enable LiveDashboard and Swoosh mailbox preview in development
+  if Application.compile_env(:apx, :dev_routes) do
+    # If you want to use the LiveDashboard in production, you should put
+    # it behind authentication and allow only admins to access it.
+    # If your application does not have an admins-only section yet,
+    # you can use Plug.BasicAuth to set up some basic authentication
+    # as long as you are also using SSL (which you should anyway).
+    import Phoenix.LiveDashboard.Router
+
+    scope "/dev" do
+      pipe_through(:browser)
+
+      live_dashboard("/dashboard", metrics: APXWeb.Telemetry)
+      forward("/mailbox", Plug.Swoosh.MailboxPreview)
+    end
+  end
+
+  scope "/" do
+    pipe_through([:browser, :require_admin_user])
+
+    oban_dashboard("/oban")
+  end
+
+  ## Authentication routes
+
+  # OAuth routes
+  scope "/auth", APXWeb do
+    pipe_through([:browser])
+
+    get("/x", XAuthController, :request)
+    get("/x/callback", XAuthController, :callback)
+    get("/google", GoogleAuthController, :request)
+    get("/google/callback", GoogleAuthController, :callback)
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser])
+
+    get("/reconsider/:slug", ReconsiderController, :redirect_to_creator)
+    live("/@:username/r/:slug", ReconsiderLive.Show, :show)
+    live("/", LatestLive.Index, :index)
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser, :redirect_if_user_is_authenticated])
+
+    live_session :redirect_if_user_is_authenticated,
+      on_mount: [{APXWeb.UserAuth, :redirect_if_user_is_authenticated}] do
+      live("/log_in", UserLoginLive, :new)
+      live("/log_in/magic-link/:token", MagicLinkLive, :confirm)
+    end
+
+    post("/log_in", UserSessionController, :create)
+    post("/log_in/magic-link", UserSessionController, :request_magic_link)
+    post("/log_in/magic-link/:token", UserSessionController, :confirm_magic_link)
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser, :fetch_current_user, :redirect_if_user_is_authenticated])
+
+    live("/reset_password", ResetPasswordLive, :new)
+  end
+
+  scope "/", APXWeb do
+    pipe_through([:browser])
+
+    delete("/log_out", UserSessionController, :delete)
+    post("/users/live_login", UserSessionController, :live_login)
+    get("/users/confirm/:token", UserConfirmationController, :confirm)
+
+    live_session :current_user,
+      on_mount: [{APXWeb.UserAuth, :mount_current_user}] do
+    end
+  end
+
+  scope "/", APXWeb do
+    pipe_through(:browser)
+
+    live("/@:username", AuthorLive.Show, :show)
+  end
+end

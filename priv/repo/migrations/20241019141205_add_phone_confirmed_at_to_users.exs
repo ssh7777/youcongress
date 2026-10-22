@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddPhoneConfirmedAtToUsers do
+defmodule APX.Repo.Migrations.AddPhoneConfirmedAtToUsers do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.RenameDriftedAuthorTwitterUsernameIndex do
+defmodule APX.Repo.Migrations.RenameDriftedAuthorTwitterUsernameIndex do
   @moduledoc """
   Realign the author X/Twitter username unique index after the column rename.
 

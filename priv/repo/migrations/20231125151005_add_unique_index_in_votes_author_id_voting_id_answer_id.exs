@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddUniqueIndexInVotesAuthorIdVotingIdAnswerId do
+defmodule APX.Repo.Migrations.AddUniqueIndexInVotesAuthorIdVotingIdAnswerId do
   use Ecto.Migration
 
   def change do

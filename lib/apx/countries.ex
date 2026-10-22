@@ -1,0 +1,195 @@
+defmodule APX.Countries do
+  @moduledoc """
+  The Countries context.
+  """
+
+  import Ecto.Query, warn: false
+
+  alias APX.Countries.Country
+  alias APX.Repo
+
+  # ISO alpha-2 codes of the 27 European Union member states.
+  @eu_iso_alpha2 ~w(AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE)
+
+  @country_aliases %{
+    "u.s." => "US",
+    "u.s.a." => "US",
+    "united states of america" => "US",
+    "usa" => "US",
+    "us" => "US",
+    "u.k." => "GB",
+    "uk" => "GB",
+    "gb" => "GB",
+    "ca" => "CA"
+  }
+
+  def list_countries do
+    Country
+    |> order_by([country], asc: country.name)
+    |> Repo.all()
+  end
+
+  def country_options do
+    list_countries()
+    |> Enum.map(fn country -> {country.name, country.id} end)
+  end
+
+  def get_country!(id), do: Repo.get!(Country, id)
+  def get_country(nil), do: nil
+  def get_country(""), do: nil
+  def get_country(id), do: Repo.get(Country, id)
+
+  def get_country_by_name(name) when is_binary(name) do
+    normalized_name = normalize_name(name)
+
+    Repo.one(
+      from c in Country,
+        where: fragment("lower(?)", c.name) == ^normalized_name
+    )
+  end
+
+  def get_country_by_name(_), do: nil
+
+  def get_country_by_iso(iso) when is_binary(iso) do
+    normalized_iso = iso |> String.trim() |> String.upcase()
+
+    Repo.one(
+      from c in Country,
+        where: c.iso_alpha2 == ^normalized_iso or c.iso_alpha3 == ^normalized_iso
+    )
+  end
+
+  def get_country_by_iso(_), do: nil
+
+  def get_country_by_name_or_iso(value) when is_binary(value) do
+    value = String.trim(value)
+    alias_or_iso = Map.get(@country_aliases, normalize_name(value), value)
+
+    get_country_by_iso(alias_or_iso) ||
+      get_country_by_name(value) ||
+      get_country_by_name(alias_or_iso)
+  end
+
+  def get_country_by_name_or_iso(_), do: nil
+
+  def get_country_by_phone_number(phone_number) when is_binary(phone_number) do
+    get_country_by_phone_number(phone_number, list_countries())
+  end
+
+  def get_country_by_phone_number(_), do: nil
+
+  def get_country_by_phone_number(phone_number, countries)
+      when is_binary(phone_number) and is_list(countries) do
+    with normalized_phone_number when is_binary(normalized_phone_number) <-
+           normalize_phone_prefix(phone_number) do
+      countries
+      |> Enum.map(fn country -> {country, normalize_phone_prefix(country.phone_prefix)} end)
+      |> Enum.filter(fn {_country, phone_prefix} ->
+        is_binary(phone_prefix) && String.starts_with?(normalized_phone_number, phone_prefix)
+      end)
+      |> Enum.sort_by(fn {country, phone_prefix} ->
+        {-String.length(phone_prefix), country.name}
+      end)
+      |> List.first()
+      |> case do
+        {country, _phone_prefix} -> country
+        nil -> nil
+      end
+    end
+  end
+
+  def get_country_by_phone_number(_, _), do: nil
+
+  def create_country(attrs \\ %{}) do
+    %Country{}
+    |> Country.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_country(%Country{} = country, attrs) do
+    country
+    |> Country.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def upsert_country(attrs) do
+    attrs = normalize_attrs(attrs)
+
+    existing =
+      get_country_by_iso(attrs[:iso_alpha2]) ||
+        get_country_by_iso(attrs[:iso_alpha3]) ||
+        get_country_by_name(attrs[:name])
+
+    case existing do
+      nil ->
+        attrs
+        |> create_country()
+        |> tag_result(:inserted)
+
+      %Country{} = country ->
+        country
+        |> update_country(attrs)
+        |> tag_result(:updated)
+    end
+  end
+
+  def country_name(%{country: %Country{name: name}}), do: name
+  def country_name(_), do: nil
+
+  @doc "ISO alpha-2 codes of the European Union member states."
+  def eu_iso_alpha2_codes, do: @eu_iso_alpha2
+
+  @doc "Returns true if the country is an EU member state."
+  def eu_member?(%Country{iso_alpha2: iso}), do: iso in @eu_iso_alpha2
+  def eu_member?(_), do: false
+
+  @doc "Returns the ids of the countries that are EU member states."
+  def eu_member_ids do
+    from(c in Country, where: c.iso_alpha2 in ^@eu_iso_alpha2, select: c.id)
+    |> Repo.all()
+  end
+
+  defp tag_result({:ok, country}, action), do: {:ok, country, action}
+  defp tag_result({:error, changeset}, _action), do: {:error, changeset}
+
+  defp normalize_attrs(attrs) do
+    attrs
+    |> Enum.map(fn {key, value} -> {normalize_key(key), normalize_value(value)} end)
+    |> Map.new()
+  end
+
+  defp normalize_key("name"), do: :name
+  defp normalize_key("iso_alpha2"), do: :iso_alpha2
+  defp normalize_key("iso_alpha3"), do: :iso_alpha3
+  defp normalize_key("phone_prefix"), do: :phone_prefix
+  defp normalize_key(key) when is_binary(key), do: key
+  defp normalize_key(key), do: key
+
+  defp normalize_value(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  defp normalize_value(value), do: value
+
+  defp normalize_name(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  defp normalize_phone_prefix(value) when is_binary(value) do
+    digits = String.replace(value, ~r/[^0-9]/, "")
+
+    case digits do
+      "" -> nil
+      digits -> "+" <> digits
+    end
+  end
+
+  defp normalize_phone_prefix(_), do: nil
+end

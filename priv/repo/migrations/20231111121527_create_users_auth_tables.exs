@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.CreateUsersAuthTables do
+defmodule APX.Repo.Migrations.CreateUsersAuthTables do
   use Ecto.Migration
 
   def change do

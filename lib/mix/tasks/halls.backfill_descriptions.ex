@@ -10,8 +10,8 @@ defmodule Mix.Tasks.Halls.BackfillDescriptions do
 
   use Mix.Task
 
-  alias YouCongress.Halls
-  alias YouCongress.Halls.DescriptionGenerator
+  alias APX.Halls
+  alias APX.Halls.DescriptionGenerator
 
   @shortdoc "Generates hall topic-hub descriptions via OpenAI"
 

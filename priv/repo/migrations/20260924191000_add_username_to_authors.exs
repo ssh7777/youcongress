@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddUsernameToAuthors do
+defmodule APX.Repo.Migrations.AddUsernameToAuthors do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.AddSignupMethodToUsers do
+defmodule APX.Repo.Migrations.AddSignupMethodToUsers do
   use Ecto.Migration
 
   def change do

@@ -1,7 +1,7 @@
-defmodule YouCongress.HallsFixtures do
+defmodule APX.HallsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `YouCongress.Halls` context.
+  entities via the `APX.Halls` context.
   """
 
   @doc """
@@ -13,7 +13,7 @@ defmodule YouCongress.HallsFixtures do
       |> Enum.into(%{
         name: "some name"
       })
-      |> YouCongress.Halls.create_hall()
+      |> APX.Halls.create_hall()
 
     hall
   end

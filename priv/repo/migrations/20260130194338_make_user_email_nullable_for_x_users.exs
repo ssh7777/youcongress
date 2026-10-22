@@ -1,4 +1,4 @@
-defmodule YouCongress.Repo.Migrations.MakeUserEmailNullableForXUsers do
+defmodule APX.Repo.Migrations.MakeUserEmailNullableForXUsers do
   use Ecto.Migration
 
   def change do
