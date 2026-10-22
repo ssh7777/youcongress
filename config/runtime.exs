@@ -110,7 +110,7 @@ if config_env() == :prod do
   config :you_congress, YouCongress.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-    ssl: database_ssl_opts
+    ssl: if(System.get_env("DATABASE_SSL", "true") == "false", do: false, else: database_ssl_opts)
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

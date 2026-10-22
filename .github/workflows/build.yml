@@ -1,0 +1,74 @@
+name: Production build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: you_congress
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '28.3'
+          elixir-version: '1.19.4'
+      - name: Check runtime configuration
+        run: elixir scripts/runtime_config_test.exs
+      - name: Build production Docker release
+        run: docker build --progress=plain --tag youcongress:ci .
+      - name: Migrate and smoke-test the production release
+        run: bash scripts/smoke_release.sh youcongress:ci
+
+  regression-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '28.3'
+          elixir-version: '1.19.4'
+      - run: mix deps.get
+      - name: Compile test environment and run deployment regressions
+        run: >-
+          mix test
+          test/you_congress_web/endpoint_test.exs
+          test/you_congress_web/plugs/domain_redirect_test.exs
+          test/you_congress_web/controllers/page_controller_test.exs
+          test/you_congress_web/live/seo_meta_test.exs
+          test/you_congress_web/mcp_server/statements_tools_test.exs

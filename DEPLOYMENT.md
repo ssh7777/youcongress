@@ -47,7 +47,9 @@ not trusted. `REDIRECT_HOSTS` optionally lists comma-separated domain aliases to
 redirect to that origin, preserving paths and queries. No aliases are enabled by
 default. Fly clustering and IPv6 Erlang distribution are only enabled on Fly.
 
-Database TLS verifies certificates by default. Prefer properly trusted database
+Database TLS verifies certificates by default. For a trusted local/private database
+that does not support TLS, explicitly set `DATABASE_SSL=false`; do not use this
+for public database connections. Prefer properly trusted database
 certificates; `DATABASE_SSL_VERIFY=false` is an explicit insecure escape hatch.
 Configure optional integrations using `.env.example`. In particular, update
 `GOOGLE_CALLBACK_URL` and `X_CALLBACK_URL` and register the exact same URLs in the
