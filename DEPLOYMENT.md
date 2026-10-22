@@ -1,6 +1,6 @@
 # APX production deployment
 
-The APX production runtime is the native Next.js application in `vercel-app/`. The Vercel project is configured with:
+The APX production runtime is the native Next.js application in `vercel-app/` with durable external PostgreSQL.
 
 - **Project:** `apx`
 - **Production URL:** `https://apx-lake.vercel.app`
@@ -8,57 +8,61 @@ The APX production runtime is the native Next.js application in `vercel-app/`. T
 - **Framework:** Next.js
 - **Install Command:** `npm ci`
 - **Build Command:** `npm run build`
-- **Database mode:** embedded PostgreSQL via PGlite
-
-The current read-only application needs no external database integration. The legacy Phoenix gateway configuration at the repository root belongs to the older deployment path and is not used by APX.
+- **Database mode:** `external`
 
 ## Environment variables
 
 | Variable | Environments | Value |
 | --- | --- | --- |
-| `APX_DATABASE_MODE` | Production, Preview | `embedded` |
+| `APX_DATABASE_MODE` | Production, Preview | `external` |
+| `DATABASE_URL` | Production, Preview | Sensitive pooled PostgreSQL connection URL |
+| `DATABASE_SSL` | Production, Preview | `true` by default |
 | `NEXT_PUBLIC_APP_NAME` | Production, Preview, Development | `APX` |
 | `NEXT_PUBLIC_APP_URL` | Production | `https://apx-lake.vercel.app` |
 | `NODE_ENV` | Production | `production` |
 
-No `DATABASE_URL` is required in embedded mode. The mode is explicit: missing external database credentials never silently activate an ephemeral database.
+Production and preview databases should be separate when preview changes could affect production data. Never commit connection strings. Keep TLS peer verification enabled for hosted databases.
 
-For a future write-enabled application, remove `APX_DATABASE_MODE`, configure a durable external `DATABASE_URL`, and add persistent-write tests before enabling those features. Embedded PGlite is single-connection and ephemeral; it is suitable for the current read-only routes, not durable user writes.
+## Persistent functionality
 
-## Build and migration pipeline
+Visitors can create and update policy statements, add and edit sourced quotations, change votes, open and close reconsiderations, and publish and edit intelligence posts. The first successful mutation creates a one-year HttpOnly guest session. Only the token’s SHA-256 hash is stored in PostgreSQL.
 
-`npm run build` executes `node scripts/migrate.mjs` and then `next build`.
+All write queries are parameterized and ownership-scoped. Cross-origin mutations are rejected using the runtime’s forwarded host and protocol. Statement deletion is guarded against cascading through another guest’s contributions. Input lengths and vote/operation choices are validated server-side.
 
-In embedded mode, the build creates an in-memory PostgreSQL instance and applies all pending migrations. At runtime, each function instance initializes the same versioned schema before querying it. Migration modules are statically imported into the serverless bundles, and PGlite is configured as a server external package so its WASM assets load correctly in production route bundles.
+## Build, migration, and write verification
 
-In external mode, the runner also acquires a database advisory lock, applies each migration in a transaction, and records versions in `apx_schema_migrations` so simultaneous deployments cannot initialize the schema twice.
+`npm run build` executes the migration runner and then `next build`.
 
-The initial schema creates users, policy statements, votes, quotes, intelligence posts, and reconsiderations. It contains no destructive table operations and no demo seed data.
+External mode:
+
+1. acquires a PostgreSQL advisory lock;
+2. applies each pending migration in a transaction and records it in `apx_schema_migrations`;
+3. runs a write probe covering users, guest sessions, statements, votes, quotes, reconsiderations, intelligence posts, and an ownership-scoped update;
+4. rolls back all probe data;
+5. compiles Next.js.
+
+The current schema version is `002_persistent_writes`. A database that cannot support persistent writes fails the deployment build instead of publishing a read-only or misleadingly healthy application.
 
 ## Verification
 
-Before deployment:
+Local and CI checks include:
 
-```sh
-cd vercel-app
-npm ci
-npm test
-APX_DATABASE_MODE=embedded npm run build
-APX_DATABASE_MODE=embedded node test/embedded-integration.mjs
-```
+- unit tests and embedded read-only route integration;
+- external initial and repeat migrations;
+- rollback write probes against every persistent table;
+- read-only record integration;
+- full HTTP mutation integration for guest sessions, CSRF, ownership, CRUD, vote upserts, redirects, XSS escaping, and persistence across a server restart.
 
-CI also verifies optional external PostgreSQL mode against a disposable database, including record-level HTTP integration tests.
-
-After every production deployment, verify:
+After production deployment, verify:
 
 ```text
 GET https://apx-lake.vercel.app/api/health
 ```
 
-A healthy embedded release returns HTTP 200 with:
+Expected response:
 
 ```json
-{"status":"ok","database":"postgresql","mode":"embedded","schema":"001_initial"}
+{"status":"ok","database":"postgresql","mode":"external","schema":"002_persistent_writes"}
 ```
 
-Also smoke-test `/`, `/explore`, `/reconsider`, `/intelligence`, and a missing statement. A Ready deployment or health-only check is not accepted until all route bundles respond correctly.
+Also verify `/`, `/explore`, `/reconsider`, and `/intelligence`, then exercise the visible create/edit forms. A Ready status without the current external health response and successful write probe is not a valid APX release.

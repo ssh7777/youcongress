@@ -5,6 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { postgresConfig } from '../lib/postgres.mjs';
 import { databaseMode, EMBEDDED_DATABASE } from '../lib/database-mode.mjs';
 import { migrate } from '../lib/migrations.mjs';
+import { verifyWriteAccess } from './verify-writes.mjs';
 
 async function main() {
   if (databaseMode() === EMBEDDED_DATABASE) {
@@ -23,7 +24,8 @@ async function main() {
   await client.connect();
   try {
     await migrate(client);
-    console.log('APX external PostgreSQL schema is up to date.');
+    await verifyWriteAccess(client);
+    console.log('APX external PostgreSQL schema and persistent writes are ready.');
   } finally {
     await client.end();
   }

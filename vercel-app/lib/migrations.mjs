@@ -1,6 +1,7 @@
 import * as initial from '../migrations/001_initial.mjs';
+import * as persistentWrites from '../migrations/002_persistent_writes.mjs';
 
-export const migrations = [initial];
+export const migrations = [initial, persistentWrites];
 
 async function execute(client, sql) {
   // pg accepts multi-statement queries; PGlite exposes exec for the same purpose.
