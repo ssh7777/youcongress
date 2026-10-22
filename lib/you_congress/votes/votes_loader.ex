@@ -74,7 +74,7 @@ defmodule YouCongressWeb.StatementLive.Show.VotesLoader do
     votes_from_delegates = get_votes_from_delegates(votes_with_opinion, current_user)
 
     share_to_x_text =
-      x_post(current_user_vote, statement) <> " https://youcongress.org/p/#{statement.slug}"
+      x_post(current_user_vote, statement) <> " #{YouCongressWeb.Endpoint.url()}/p/#{statement.slug}"
 
     # Unfiltered quote tally: unlike quotes_votes_count above, it ignores the
     # answer filter, so the synthesis card does not disappear when a visitor

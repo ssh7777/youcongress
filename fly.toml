@@ -13,7 +13,6 @@ kill_signal = 'SIGTERM'
   release_command = '/app/bin/migrate'
 
 [env]
-  PHX_HOST = 'youcongress.org'
   PHX_SERVER = 'true'
   PORT = '8080'
 
