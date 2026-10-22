@@ -28,7 +28,6 @@ site and no nonfunctional buttons are presented as working features.
 ## Run locally
 
 ```sh
-cd vercel-app
 npm ci
 npm test
 npm run build
@@ -43,18 +42,18 @@ URL. No database migrations or demo seeds run during build or request handling.
 Database strings/credentials must never be committed. Verify your provider's CA
 chain rather than disabling peer verification on public connections.
 
-## Deploy a separate Vercel preview project
+## Deploy on Vercel
 
-Use the same Git repository and set **Root Directory to `vercel-app`**, Framework
-to **Next.js**, Build Command to `npm run build`, Output Directory to framework
-default. Configure `DATABASE_URL` in Vercel settings. Do not supply PHOENIX_ORIGIN.
-Do not use the repository-root gateway build command for this project.
+The repository root now exposes the native routes through thin `app/` entry
+points. Use the root `package.json` and committed `vercel.json`, with Root
+Directory unset (repository root). Framework is Next.js; `npm ci` and
+`npm run build` produce `.next`. No Phoenix gateway or PHOENIX_ORIGIN is involved.
+Set DATABASE_URL in Vercel settings to a migrated, managed PostgreSQL database.
 
-The repository-root Vercel project is deliberately unchanged: switching its
-production URL to this incomplete migration would remove existing functionality.
-Validate the separate preview before a future production cutover. A successful
-build without DATABASE_URL is not a healthy application; `/api/health` must be
-200 with `{ "status": "ok" }` before accepting a database-backed deployment.
+This changes the deployed application to this read-only stage; it does not
+complete feature parity. Preview it before promoting to production. A successful
+build without DATABASE_URL is not a healthy data-backed application;
+`/api/health` must return 200 with `{ "status": "ok" }` before accepting deployment.
 
 ## Verification
 

@@ -27,7 +27,7 @@ try {
   const opinion = await client.query('INSERT INTO opinions(content,source_url,source_text,author_id,inserted_at,updated_at) VALUES ($1,$2,$3,$4,now(),now()) RETURNING id', ['=formula <script id="native-record-xss">alert(1)</script>', 'https://example.com/native-ci-source', 'Original source passage', authorId]);
   await client.query('INSERT INTO opinions_statements(opinion_id,statement_id,inserted_at,updated_at) VALUES ($1,$2,now(),now())', [opinion.rows[0].id, statementId]);
   await client.query('COMMIT');
-  server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '4010'], {cwd: new URL('..', import.meta.url), stdio: 'inherit', env: {...process.env, DATABASE_SSL: 'false'}});
+  server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '4010'], {cwd: new URL('../../', import.meta.url), stdio: 'inherit', env: {...process.env, DATABASE_SSL: 'false'}});
   const origin = 'http://127.0.0.1:4010';
   let ready = false;
   for (let attempt = 0; attempt < 40; attempt++) {
