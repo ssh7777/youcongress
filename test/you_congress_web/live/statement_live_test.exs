@@ -585,7 +585,7 @@ defmodule YouCongressWeb.StatementLiveTest do
         |> render_click()
 
       assert html =~
-               "AI quote search uses credits. Email hello@youcongress.org to purchase access."
+               "AI quote search uses credits. Email hello@apx-lake.vercel.app to purchase access."
     end
 
     test "shows AI quote action to users with permission", %{

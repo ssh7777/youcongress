@@ -133,7 +133,7 @@ defmodule YouCongress.Opinions.Quotes.QuotatorAI do
       end
 
     """
-    You are helping populate YouCongress (youcongress.org) with real, sourced quotes from notable public figures, experts, and organisations.
+    You are helping populate YouCongress (apx-lake.vercel.app) with real, sourced quotes from notable public figures, experts, and organisations.
 
     Statement: #{statement_title}
     Current UTC date: #{Date.to_iso8601(current_date)}

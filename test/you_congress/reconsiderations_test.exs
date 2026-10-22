@@ -336,8 +336,8 @@ defmodule YouCongress.ReconsiderationsTest do
       "title" => "A referenced experience",
       "content_url" => "https://example.com/read",
       "content_type" => "article",
-      "statement_refs" => "https://youcongress.org/p/#{context.first_statement.slug}",
-      "delegate_refs" => "https://youcongress.org/a/#{context.delegate.id}"
+      "statement_refs" => "https://apx-lake.vercel.app/p/#{context.first_statement.slug}",
+      "delegate_refs" => "https://apx-lake.vercel.app/a/#{context.delegate.id}"
     }
 
     assert {:ok, reconsideration} = Reconsiderations.create_from_refs(context.creator, attrs)

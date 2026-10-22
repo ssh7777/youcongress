@@ -10,17 +10,17 @@ defmodule YouCongress.Workers.ReconsiderationCreatedNotificationWorkerTest do
              ReconsiderationCreatedNotificationWorker.perform(%Oban.Job{
                args: %{
                  "creator_name" => "Ada Lovelace",
-                 "reconsideration_url" => "https://youcongress.org/@ada/r/analytical-engine"
+                 "reconsideration_url" => "https://apx-lake.vercel.app/@ada/r/analytical-engine"
                }
              })
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "hector@youcongress.org"}]
+      assert email.to == [{"", "hector@apx-lake.vercel.app"}]
       assert email.subject == "New YouCongress Reconsider page"
       assert email.text_body =~ "Creator: Ada Lovelace"
-      assert email.text_body =~ "Page: https://youcongress.org/@ada/r/analytical-engine"
+      assert email.text_body =~ "Page: https://apx-lake.vercel.app/@ada/r/analytical-engine"
       assert email.html_body =~ "Creator: Ada Lovelace"
-      assert email.html_body =~ ~s(href="https://youcongress.org/@ada/r/analytical-engine")
+      assert email.html_body =~ ~s(href="https://apx-lake.vercel.app/@ada/r/analytical-engine")
       true
     end)
   end

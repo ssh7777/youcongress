@@ -22,7 +22,7 @@ defmodule YouCongress.Seeds do
 
   defp find_or_create_user do
     user_attrs = %{
-      "email" => "admin@youcongress.org",
+      "email" => "admin@apx-lake.vercel.app",
       "password" => "admin:1234"
     }
 

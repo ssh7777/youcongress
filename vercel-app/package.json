@@ -1,8 +1,22 @@
 {
-  "name": "youcongress-vercel-native",
+  "name": "apx",
   "private": true,
   "version": "0.1.0",
-  "engines": { "node": ">=22.0.0" },
-  "scripts": { "dev": "next dev --hostname 0.0.0.0", "build": "next build", "start": "next start --hostname 0.0.0.0", "test": "node --test test/*.test.mjs" },
-  "dependencies": { "next": "16.4.2", "pg": "8.23.1", "react": "19.3.1", "react-dom": "19.3.1" }
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0",
+    "build": "node scripts/migrate.mjs && next build",
+    "build:next": "next build",
+    "migrate": "node scripts/migrate.mjs",
+    "start": "next start --hostname 0.0.0.0",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
 }

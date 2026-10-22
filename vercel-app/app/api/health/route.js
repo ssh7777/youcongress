@@ -1,11 +1,24 @@
 import { query } from '../../../lib/db.mjs';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
-    await query('SELECT s.id, o.id, os.statement_id, a.id FROM statements s LEFT JOIN opinions_statements os ON os.statement_id=s.id LEFT JOIN opinions o ON o.id=os.opinion_id LEFT JOIN authors a ON a.id=o.author_id LIMIT 1');
-    return Response.json({status: 'ok', mode: 'read-only-migration-preview'}, {headers: {'Cache-Control': 'no-store'}});
+    const {rows} = await query(`
+      SELECT
+        to_regclass('public.users') IS NOT NULL AS users,
+        to_regclass('public.policy_statements') IS NOT NULL AS policy_statements,
+        to_regclass('public.votes') IS NOT NULL AS votes,
+        to_regclass('public.quotes') IS NOT NULL AS quotes,
+        to_regclass('public.intelligence_posts') IS NOT NULL AS intelligence_posts,
+        to_regclass('public.reconsiderations') IS NOT NULL AS reconsiderations,
+        EXISTS (SELECT 1 FROM apx_schema_migrations WHERE version = '001_initial') AS migrated
+    `);
+    const healthy = Object.values(rows[0]).every(Boolean);
+    if (!healthy) throw new Error('APX schema is incomplete.');
+    return Response.json({status: 'ok', database: 'postgresql', schema: '001_initial'}, {headers: {'Cache-Control': 'no-store'}});
   } catch {
-    return Response.json({status: 'unavailable'}, {status: 503, headers: {'Cache-Control': 'no-store'}});
+    return Response.json({status: 'unavailable', database: 'postgresql'}, {status: 503, headers: {'Cache-Control': 'no-store'}});
   }
 }
